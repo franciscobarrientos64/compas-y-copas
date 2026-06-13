@@ -1619,6 +1619,7 @@ export default function App() {
               </div>
             )}
           </>}
+        </>}
 
         {/* ── TAB: BUSCAR ── */}
         {tab === "search" && <>
@@ -1677,8 +1678,6 @@ export default function App() {
               </div>
             }
           </div>
-        </>}
-
         </>}
 
       </div>
