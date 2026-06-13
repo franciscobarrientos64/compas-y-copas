@@ -1034,8 +1034,9 @@ export default function App() {
     const sgC = liveSession.songs_count;
     const sC = liveSession.sets_count;
     if (curSong < sgC - 1) {
-      setCurSong(curSong + 1); setPhase("entry");
-      syncNav(curSet, curSong + 1, "entry");
+      const ns = curSong + 1;
+      setCurSong(ns); setPhase("entry");
+      syncNav(curSet, ns, "entry");       // persiste antes de render
     } else if (curSet < sC - 1) {
       setPhase("set_done");
       syncNav(curSet, curSong, "set_done");
@@ -1151,7 +1152,8 @@ export default function App() {
       const nq = normalize(q);
       songs = songs.filter(sg =>
         normalize(sg.title).includes(nq) ||
-        normalize(sg.artist).includes(nq)
+        normalize(sg.artist).includes(nq) ||
+        normalize(sg.album).includes(nq)
       );
     }
     return songs.filter(sg => sg.title).sort((a, b) => (songAvg(b) || 0) - (songAvg(a) || 0));
@@ -1329,6 +1331,10 @@ export default function App() {
                     }}
                     onKeyDown={e => e.key === "Enter" && openVoting()} />
                 </div>
+                <div className="field"><label>Álbum (opcional)</label>
+                  <input placeholder="Ej: Violator" value={curLiveSong.album || ""}
+                    onChange={e => saveSongMeta(curSet, curSong, "album", e.target.value)} />
+                </div>
                 {dupWarning && (
                   <div className="dup-warning">
                     <div style={{ color: "var(--yellow)", fontFamily: "'Press Start 2P', monospace", fontSize: 7, marginBottom: 6 }}>
@@ -1352,8 +1358,15 @@ export default function App() {
             {phase === "voting" && curLiveSong && (
               <div className="card mag">
                 <div className="ct mag">◉ VOTANDO</div>
-                <div className="mono" style={{ fontSize: 13, color: "var(--white)", marginBottom: 14 }}>
-                  {curLiveSong.artist} — {curLiveSong.title}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 13, color: "var(--white)" }}>
+                    {curLiveSong.artist} — {curLiveSong.title}
+                  </div>
+                  {curLiveSong.album && (
+                    <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 10, color: "var(--muted)", marginTop: 3 }}>
+                      💿 {curLiveSong.album}
+                    </div>
+                  )}
                 </div>
 
                 {(liveSession.attendees || []).map(voter => {
@@ -1406,7 +1419,7 @@ export default function App() {
                   </div>
                 ))}
                 {liveSets[curSet + 1] && (
-                  <button className="btn bp mt16" onClick={() => { setCurSet(curSet + 1); setCurSong(0); setPhase("entry"); syncNav(curSet + 1, 0, "entry"); }}>
+                  <button className="btn bp mt16" onClick={() => { const ns = curSet + 1; setCurSet(ns); setCurSong(0); setPhase("entry"); syncNav(ns, 0, "entry"); }}>
                     ► INICIAR {liveSets[curSet + 1]?.label}
                   </button>
                 )}
@@ -1626,7 +1639,7 @@ export default function App() {
                     <span className="lbr">{rankEmoji(i)}</span>
                     <div className="lbi">
                       <div className="lbsong">{song.title}</div>
-                      <div className="lbartist">{song.artist} · T{song.sessionNum} · {song.setLabel} · {new Date(song.sessionDate).toLocaleDateString("es-PE")}</div>
+                      <div className="lbartist">{song.artist}{song.album ? ` · 💿 ${song.album}` : ""} · T{song.sessionNum} · {new Date(song.sessionDate).toLocaleDateString("es-PE")}</div>
                     </div>
                     <span className="lbsc" style={{ color: scoreColor(songAvg(song)) }}>{songAvg(song)}</span>
                   </div>
@@ -1724,7 +1737,7 @@ export default function App() {
                     <div key={i} className="sr" onClick={() => setModalSong(song)}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div className="stitle">{song.title}</div>
-                        <div className="sartist">{song.artist}</div>
+                        <div className="sartist">{song.artist}{song.album ? ` · 💿 ${song.album}` : ""}</div>
                         <div className="mono" style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>
                           T{song.sessionNum} · {song.setLabel} · {new Date(song.sessionDate).toLocaleDateString("es-PE")}
                           {searchPerson !== "all" && song.votes[searchPerson] !== undefined &&
@@ -1765,6 +1778,11 @@ export default function App() {
                   {s.title}
                 </div>
                 <div className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>{s.artist}</div>
+              {s.album && (
+                <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginTop: 3 }}>
+                  💿 {s.album}
+                </div>
+              )}
               </div>
 
               <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
