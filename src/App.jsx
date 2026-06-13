@@ -879,10 +879,11 @@ export default function App() {
   // Duplicate warning during live entry
   const [dupWarning, setDupWarning] = useState(null);
 
-  /* ── Load sessions ── */
+  /* ── Load all historical sessions ── */
   const loadSessions = useCallback(async () => {
     setLoading(true);
-    const { data: sess } = await db.from("cyc_sessions").select("*").order("session_num", { ascending: false });
+    const { data: sess } = await db.from("cyc_sessions")
+      .select("*").eq("complete", true).order("session_num", { ascending: false });
     if (!sess) { setLoading(false); return; }
     const full = await Promise.all(sess.map(async s => {
       const { data: sets } = await db.from("cyc_sets").select("*").eq("session_id", s.id).order("set_index");
@@ -902,19 +903,7 @@ export default function App() {
     setConnected(true);
   }, []);
 
-  useEffect(() => { loadSessions(); }, [loadSessions]);
-
-  /* ── Realtime ── */
-  useEffect(() => {
-    if (!liveSession) return;
-    const sub = db.channel(`cyc_live_${liveSession.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "cyc_votes" }, () => {
-        refreshLiveSets(liveSession.id);
-      }).subscribe();
-    realtimeSub.current = sub;
-    return () => { db.removeChannel(sub); };
-  }, [liveSession]);
-
+  /* ── Load live sets for a session ── */
   const refreshLiveSets = useCallback(async (sessionId) => {
     const { data: sets } = await db.from("cyc_sets").select("*").eq("session_id", sessionId).order("set_index");
     const sw = await Promise.all((sets || []).map(async st => {
@@ -929,24 +918,76 @@ export default function App() {
     setLiveSets(sw);
   }, []);
 
+  /* ── On mount: check for active session + load history ── */
+  useEffect(() => {
+    loadSessions();
+    // Check if there's an active session anyone can join
+    db.from("cyc_sessions").select("*").eq("active", true).eq("complete", false).maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setLiveSession(data);
+          setCurSet(data.cur_set || 0);
+          setCurSong(data.cur_song || 0);
+          setPhase(data.phase || "entry");
+          refreshLiveSets(data.id);
+          setTab("live");
+        }
+      });
+  }, [loadSessions, refreshLiveSets]);
+
+  /* ── Realtime: subscribe to votes + session state changes ── */
+  useEffect(() => {
+    if (!liveSession) return;
+    const sub = db.channel(`cyc_live_${liveSession.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "cyc_votes" }, () => {
+        refreshLiveSets(liveSession.id);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "cyc_sessions",
+          filter: `id=eq.${liveSession.id}` }, (payload) => {
+        const s = payload.new;
+        // Sync navigation state from DB for observers
+        if (s.cur_set !== undefined) setCurSet(s.cur_set);
+        if (s.cur_song !== undefined) setCurSong(s.cur_song);
+        if (s.phase !== undefined) setPhase(s.phase);
+        if (s.complete) {
+          setLiveSession(null); setLiveSets([]); setPhase("entry");
+          loadSessions(); setTab("history");
+        }
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "cyc_songs" }, () => {
+        refreshLiveSets(liveSession.id);
+      })
+      .subscribe();
+    realtimeSub.current = sub;
+    return () => { db.removeChannel(sub); };
+  }, [liveSession, refreshLiveSets, loadSessions]);
+
   /* ── Create session ── */
   async function createSession() {
     if (!nHost || !nAttendees.length) return;
     setCreating(true);
+    // Mark any previous active session as inactive
+    await db.from("cyc_sessions").update({ active: false }).eq("active", true);
     const [sC, sgC] = nMode === "4x5" ? [4, 5] : [5, 4];
     const sessionNum = (sessions.length > 0 ? Math.max(...sessions.map(s => s.session_num)) : 0) + 1;
     const { data: sess, error } = await db.from("cyc_sessions").insert({
       session_num: sessionNum, host: nHost, date: nDate,
       attendees: nAttendees, input_mode: nInput,
-      sets_count: sC, songs_count: sgC, complete: false
+      sets_count: sC, songs_count: sgC,
+      complete: false, active: true,
+      cur_set: 0, cur_song: 0, phase: "entry"
     }).select().single();
     if (error || !sess) { setCreating(false); alert("Error: " + error?.message); return; }
     const allSets = [];
     for (let si = 0; si < sC; si++) {
-      const { data: setRow } = await db.from("cyc_sets").insert({ session_id: sess.id, set_index: si, label: `Set ${si + 1}` }).select().single();
+      const { data: setRow } = await db.from("cyc_sets").insert({
+        session_id: sess.id, set_index: si, label: `Set ${si + 1}`
+      }).select().single();
       const songs = [];
       for (let so = 0; so < sgC; so++) {
-        const { data: song } = await db.from("cyc_songs").insert({ set_id: setRow.id, song_index: so, artist: "", title: "" }).select().single();
+        const { data: song } = await db.from("cyc_songs").insert({
+          set_id: setRow.id, song_index: so, artist: "", title: ""
+        }).select().single();
         songs.push({ ...song, votes: {} });
       }
       allSets.push({ ...setRow, songs });
@@ -978,21 +1019,30 @@ export default function App() {
     );
   }
 
-  /* ── Navigation ── */
+  /* ── Navigation — persists to DB so all devices sync ── */
+  async function syncNav(set, song, ph) {
+    await db.from("cyc_sessions").update({ cur_set: set, cur_song: song, phase: ph })
+      .eq("id", liveSession.id);
+  }
   function openVoting() {
     const song = liveSets[curSet]?.songs[curSong];
     if (!song?.artist || !song?.title) return;
     setPhase("voting");
+    syncNav(curSet, curSong, "voting");
   }
   function nextSong() {
     const sgC = liveSession.songs_count;
     const sC = liveSession.sets_count;
-    if (curSong < sgC - 1) { setCurSong(curSong + 1); setPhase("entry"); }
-    else if (curSet < sC - 1) { setPhase("set_done"); }
-    else { finishSession(); }
+    if (curSong < sgC - 1) {
+      setCurSong(curSong + 1); setPhase("entry");
+      syncNav(curSet, curSong + 1, "entry");
+    } else if (curSet < sC - 1) {
+      setPhase("set_done");
+      syncNav(curSet, curSong, "set_done");
+    } else { finishSession(); }
   }
   async function finishSession() {
-    await db.from("cyc_sessions").update({ complete: true }).eq("id", liveSession.id);
+    await db.from("cyc_sessions").update({ complete: true, active: false }).eq("id", liveSession.id);
     await loadSessions();
     setLiveSession(null); setLiveSets([]); setPhase("entry"); setTab("history");
   }
@@ -1216,6 +1266,24 @@ export default function App() {
           )}
 
           {liveSession && <>
+            {/* EN VIVO banner */}
+            <div style={{
+              background: "rgba(0,255,80,.07)", border: "2px solid #00ff50",
+              padding: "8px 12px", marginBottom: 8, display: "flex",
+              alignItems: "center", justifyContent: "space-between",
+              boxShadow: "0 0 12px rgba(0,255,80,.2)"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span className="dot-on" style={{ background: "#00ff50", boxShadow: "0 0 6px #00ff50" }} />
+                <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 7, color: "#00ff50", letterSpacing: ".1em" }}>
+                  EN VIVO — TODOS PUEDEN VER
+                </span>
+              </div>
+              <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 10, color: "#00ff50", opacity: .7 }}>
+                compas-y-copas.vercel.app
+              </span>
+            </div>
+
             {/* Session bar */}
             <div className="card">
               <div className="between">
@@ -1338,7 +1406,7 @@ export default function App() {
                   </div>
                 ))}
                 {liveSets[curSet + 1] && (
-                  <button className="btn bp mt16" onClick={() => { setCurSet(curSet + 1); setCurSong(0); setPhase("entry"); }}>
+                  <button className="btn bp mt16" onClick={() => { setCurSet(curSet + 1); setCurSong(0); setPhase("entry"); syncNav(curSet + 1, 0, "entry"); }}>
                     ► INICIAR {liveSets[curSet + 1]?.label}
                   </button>
                 )}
