@@ -17,26 +17,31 @@ const CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Paleta cyan/celeste — arcade 80s */
-  --bg: #000d18;
-  --bg2: #001525;
-  --surf: #001e30;
-  --surf2: #00253a;
-  --border: #003a55;
-  --border2: #005577;
+  /* Paleta custom: rosa / amarillo / verde menta / celeste / carbón */
+  --bg: #111111;
+  --bg2: #1a1a1a;
+  --surf: #222222;
+  --surf2: #2b2b2b;
+  --border: #3a3a3a;
+  --border2: #4a4a4a;
 
-  /* Neon cyan dominante */
-  --magenta: #00ccff;   /* cyan eléctrico — dominante */
-  --mag2: rgba(0,204,255,.12);
-  --cyan: #00ffff;      /* cyan puro — acento */
-  --cyn2: rgba(0,255,255,.1);
-  --yellow: #ffff00;    /* amarillo — highlights y scores altos */
-  --orange: #00aaff;    /* azul eléctrico */
-  --green: #00ffcc;     /* verde agua */
-  --red: #ff4466;
+  /* Los 4 colores de la paleta */
+  --pink:    #FF4D6D;   /* rosa — dominante, nav activo, títulos */
+  --yellow:  #FFBD00;   /* amarillo dorado — scores altos, highlights */
+  --green:   #3CFF7F;   /* verde menta — online, confirmaciones */
+  --blue:    #33B6FF;   /* celeste — secundario, info, links */
+  --carbon:  #2B2B2B;   /* carbón — superficies */
+
+  /* aliases para no tocar todo el código */
+  --magenta: var(--pink);
+  --mag2: rgba(255,77,109,.12);
+  --cyan: var(--blue);
+  --cyn2: rgba(51,182,255,.1);
+  --orange: var(--yellow);
+  --red: #ff3355;
   --white: #ffffff;
-  --cream: #aaeeff;     /* texto principal — celeste suave */
-  --muted: #1a6688;
+  --cream: #f0f0f0;
+  --muted: #666666;
   --r: 0px;
 }
 
@@ -139,8 +144,8 @@ body::before {
   display: block;
 }
 .title-amp { 
-  color: var(--cyan); 
-  text-shadow: 3px 3px 0 #006666, 0 0 20px var(--cyan), 0 0 40px rgba(0,255,255,.4);
+  color: #33B6FF; 
+  text-shadow: 3px 3px 0 #005588, 0 0 20px #33B6FF, 0 0 40px rgba(51,182,255,.4);
 }
 .sub {
   font-family: 'Share Tech Mono', monospace;
@@ -153,8 +158,8 @@ body::before {
 .dot-on {
   width: 6px; height: 6px;
   display: inline-block;
-  background: var(--green);
-  box-shadow: 0 0 6px var(--green);
+  background: #3CFF7F;
+  box-shadow: 0 0 6px #3CFF7F;
   animation: blink 0.8s steps(1) infinite;
 }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
@@ -200,8 +205,8 @@ body::before {
 }
 .nb:last-child { border-right: none; }
 .nb.on {
-  background: var(--magenta);
-  color: var(--bg);
+  background: #FF4D6D;
+  color: #fff;
   text-shadow: none;
   box-shadow: inset 0 -3px 0 rgba(0,0,0,.4);
 }
@@ -272,8 +277,8 @@ input, select {
   transition: border-color .1s steps(1);
 }
 input:focus, select:focus {
-  border-color: var(--cyan);
-  box-shadow: 0 0 0 1px var(--cyan), inset 0 0 10px rgba(0,255,255,.05);
+  border-color: #33B6FF;
+  box-shadow: 0 0 0 1px #33B6FF, inset 0 0 10px rgba(51,182,255,.05);
 }
 input::placeholder { color: #333366; }
 select option { background: #000; color: var(--green); }
@@ -305,22 +310,22 @@ label {
 }
 .btn:disabled { opacity: .3; cursor: not-allowed; }
 .bp {
-  background: var(--cyan);
-  border-color: var(--cyan);
+  background: #33B6FF;
+  border-color: #33B6FF;
   color: #000;
-  box-shadow: 3px 3px 0 #006666;
+  box-shadow: 3px 3px 0 #005588;
 }
 .bp:hover:not(:disabled) {
   background: #000;
-  color: var(--cyan);
-  box-shadow: 3px 3px 0 var(--cyan);
+  color: #33B6FF;
+  box-shadow: 3px 3px 0 #33B6FF;
 }
 .bp:active:not(:disabled) { transform: translate(2px,2px); box-shadow: 1px 1px 0 #006666; }
 .bm {
-  background: var(--magenta);
-  border-color: var(--magenta);
-  color: #000;
-  box-shadow: 3px 3px 0 #004466;
+  background: #FF4D6D;
+  border-color: #FF4D6D;
+  color: #fff;
+  box-shadow: 3px 3px 0 #881122;
 }
 .bm:hover:not(:disabled) { background: #000; color: var(--magenta); box-shadow: 3px 3px 0 var(--magenta); }
 .bm:active:not(:disabled) { transform: translate(2px,2px); box-shadow: 1px 1px 0 #004466; }
@@ -344,11 +349,11 @@ label {
 .tag {
   display: inline-flex; align-items: center; gap: 5px;
   background: #000;
-  border: 1px solid var(--cyan);
+  border: 1px solid #33B6FF;
   padding: 3px 7px;
   font-family: 'Share Tech Mono', monospace;
   font-size: 11px;
-  color: var(--cyan);
+  color: #33B6FF;
 }
 .tag-x { cursor: pointer; opacity: .6; }
 .tag-x:hover { opacity: 1; color: var(--red); }
@@ -368,10 +373,10 @@ label {
   padding: 0;
 }
 .sb:hover, .sb.sel {
-  background: var(--magenta);
-  border-color: var(--magenta);
-  color: #000;
-  box-shadow: 0 0 8px var(--magenta);
+  background: #FF4D6D;
+  border-color: #FF4D6D;
+  color: #fff;
+  box-shadow: 0 0 8px #FF4D6D;
   transform: scale(1.05);
 }
 .sb.half { font-size: 6px; }
@@ -432,7 +437,7 @@ label {
   height: 100%; 
   background: repeating-linear-gradient(
     90deg,
-    var(--magenta) 0px, var(--magenta) 8px,
+    #FFBD00 0px, #FFBD00 8px,
     transparent 8px, transparent 10px
   );
   transition: width .4s steps(10); 
@@ -468,14 +473,14 @@ label {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0; height: 3px;
-  background: var(--orange);
-  box-shadow: 0 0 6px var(--orange);
+  background: #FFBD00;
+  box-shadow: 0 0 6px #FFBD00;
 }
 .sval { 
   font-family: 'Press Start 2P', monospace; 
   font-size: 20px; 
-  color: var(--yellow); 
-  text-shadow: 2px 2px 0 #666600, 0 0 10px var(--yellow);
+  color: #FFBD00; 
+  text-shadow: 2px 2px 0 #664d00, 0 0 10px #FFBD00;
   line-height: 1.3;
 }
 .slbl { 
@@ -498,7 +503,7 @@ label {
   transition: all .05s steps(1);
 }
 .lb:hover { background: rgba(0,204,255,.06); }
-.lb:nth-child(1) { border-left-color: var(--yellow); box-shadow: -2px 0 8px rgba(255,255,0,.3); }
+.lb:nth-child(1) { border-left-color: #FFBD00; box-shadow: -2px 0 8px rgba(255,189,0,.3); }
 .lb:nth-child(2) { border-left-color: #aaaaaa; }
 .lb:nth-child(3) { border-left-color: var(--orange); }
 .lbr { 
@@ -507,7 +512,7 @@ label {
   min-width: 32px; 
   color: var(--muted);
 }
-.lb:nth-child(1) .lbr { color: var(--yellow); text-shadow: 0 0 8px var(--yellow), 2px 2px 0 #666600; }
+.lb:nth-child(1) .lbr { color: #FFBD00; text-shadow: 0 0 8px #FFBD00, 2px 2px 0 #664d00; }
 .lb:nth-child(2) .lbr { color: #cccccc; }
 .lb:nth-child(3) .lbr { color: var(--orange); }
 .lbi { flex: 1; min-width: 0; }
@@ -582,7 +587,7 @@ label {
   height: 100%; 
   background: repeating-linear-gradient(
     90deg,
-    var(--magenta) 0px, var(--magenta) 6px,
+    #FF4D6D 0px, #FF4D6D 6px,
     transparent 6px, transparent 8px
   );
   transition: width .5s steps(12); 
@@ -668,8 +673,8 @@ label {
 }
 .modal {
   background: var(--surf);
-  border: 2px solid var(--magenta);
-  box-shadow: 0 0 40px rgba(0,204,255,.4), 0 0 80px rgba(0,204,255,.15);
+  border: 2px solid #FF4D6D;
+  box-shadow: 0 0 40px rgba(255,77,109,.4), 0 0 80px rgba(255,77,109,.15);
   width: 100%; max-width: 480px;
   max-height: 90vh;
   overflow-y: auto;
@@ -719,13 +724,13 @@ label {
 .search-input {
   flex: 1;
   background: #000;
-  border: 2px solid var(--magenta);
+  border: 2px solid #FF4D6D;
   color: var(--cream);
   font-family: "Share Tech Mono", monospace;
   font-size: 14px;
   padding: 10px 12px;
   outline: none;
-  box-shadow: 0 0 10px rgba(0,204,255,.2);
+  box-shadow: 0 0 10px rgba(255,77,109,.2);
 }
 .search-input:focus { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0,255,255,.3); }
 .search-input::placeholder { color: var(--muted); }
@@ -773,8 +778,8 @@ label {
 .insert-coin {
   font-family: 'Press Start 2P', monospace;
   font-size: 8px;
-  color: var(--yellow);
-  text-shadow: 0 0 8px var(--yellow);
+  color: #FFBD00;
+  text-shadow: 0 0 8px #FFBD00;
   animation: insert-coin 1s steps(1) infinite;
   letter-spacing: .1em;
 }
@@ -788,10 +793,10 @@ function avg(arr) {
 }
 function scoreColor(s) {
   if (s == null) return "var(--muted)";
-  if (s >= 9) return "var(--green)";
-  if (s >= 7.5) return "var(--cyan)";
-  if (s >= 6) return "var(--white)";
-  return "#ff5555";
+  if (s >= 9) return "#3CFF7F";   /* verde menta */
+  if (s >= 7.5) return "#33B6FF"; /* celeste */
+  if (s >= 6) return "#f0f0f0";   /* blanco suave */
+  return "#FF4D6D";               /* rosa para bajos */
 }
 function fmtDate(d) {
   return new Date(d).toLocaleDateString("es-PE", { weekday: "short", year: "numeric", month: "short", day: "numeric" });
@@ -810,7 +815,7 @@ function setAvg(set) {
 }
 
 /* ── Pixel EQ Bars component — estilo arcade ── */
-const EQ_COLORS = ["#00ccff","#00ccff","#ff6600","#ffff00","#00ff44","#00ffff","#ffff00","#ff6600","#00ccff","#00ccff"];
+const EQ_COLORS = ["#FF4D6D","#FFBD00","#3CFF7F","#33B6FF","#FF4D6D","#FFBD00","#3CFF7F","#33B6FF","#FF4D6D","#FFBD00"];
 function PixelEQ({ n = 10 }) {
   const bars = Array.from({length: n}, (_, i) => ({
     d: (Math.random() * 0.4 + 0.3).toFixed(2) + "s",
