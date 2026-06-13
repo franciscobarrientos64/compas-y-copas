@@ -658,6 +658,113 @@ label {
 ::-webkit-scrollbar-track { background: #000; border-left: 1px solid var(--border); }
 ::-webkit-scrollbar-thumb { background: var(--magenta); box-shadow: 0 0 4px var(--magenta); }
 
+/* ── MODAL ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.85);
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.modal {
+  background: var(--surf);
+  border: 2px solid var(--magenta);
+  box-shadow: 0 0 40px rgba(0,204,255,.4), 0 0 80px rgba(0,204,255,.15);
+  width: 100%; max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 20px;
+  position: relative;
+}
+.modal::before, .modal::after {
+  content: "";
+  position: absolute;
+  width: 10px; height: 10px;
+}
+.modal::before { top: -1px; left: -1px; border-top: 2px solid var(--cyan); border-left: 2px solid var(--cyan); }
+.modal::after  { bottom: -1px; right: -1px; border-bottom: 2px solid var(--cyan); border-right: 2px solid var(--cyan); }
+
+/* ── VOTE BREAKDOWN in modal ── */
+.vote-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(0,204,255,.06);
+  font-size: 12px;
+}
+.vote-row:last-child { border-bottom: none; }
+.vote-name { font-family: "Share Tech Mono", monospace; color: var(--cream); }
+.vote-score { font-family: "Press Start 2P", monospace; font-size: 11px; }
+
+/* ── DUP WARNING ── */
+.dup-warning {
+  background: rgba(255,200,0,.08);
+  border: 2px solid var(--yellow);
+  padding: 10px 12px;
+  margin-top: 8px;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 11px;
+}
+.dup-item {
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,0,.1);
+  color: var(--yellow);
+}
+.dup-item:last-child { border-bottom: none; }
+
+/* ── SEARCH BAR ── */
+.search-bar {
+  display: flex; gap: 6px;
+  margin-bottom: 12px;
+}
+.search-input {
+  flex: 1;
+  background: #000;
+  border: 2px solid var(--magenta);
+  color: var(--cream);
+  font-family: "Share Tech Mono", monospace;
+  font-size: 14px;
+  padding: 10px 12px;
+  outline: none;
+  box-shadow: 0 0 10px rgba(0,204,255,.2);
+}
+.search-input:focus { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0,255,255,.3); }
+.search-input::placeholder { color: var(--muted); }
+
+/* ── SEARCH RESULT ── */
+.sr {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px;
+  background: #000;
+  border: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  margin-bottom: 3px;
+  cursor: pointer;
+  transition: border-left-color .05s steps(1);
+}
+.sr:hover { border-left-color: var(--magenta); background: rgba(0,204,255,.05); }
+
+/* ── SPOTIFY / APPLE links ── */
+.music-links { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.mlink {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  background: #000;
+  color: var(--cream);
+  font-family: "Share Tech Mono", monospace;
+  font-size: 10px;
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  cursor: pointer;
+  transition: all .05s steps(1);
+}
+.mlink:hover { border-color: var(--cyan); color: var(--cyan); }
+.mlink.spotify { border-color: #1db954; color: #1db954; }
+.mlink.spotify:hover { background: rgba(29,185,84,.1); }
+.mlink.apple { border-color: #fa243c; color: #fa243c; }
+.mlink.apple:hover { background: rgba(250,36,60,.1); }
+
 /* ── INSERT COIN blink ── */
 @keyframes insert-coin {
   0%, 49% { opacity: 1; }
@@ -760,6 +867,17 @@ export default function App() {
 
   // Stats filters
   const [statsView, setStatsView] = useState("songs"); // songs|voters|seasons
+
+  // Song detail modal (Top 20 click)
+  const [modalSong, setModalSong] = useState(null);
+
+  // Search tab
+  const [searchQ, setSearchQ] = useState("");
+  const [searchSeason, setSearchSeason] = useState("all");
+  const [searchPerson, setSearchPerson] = useState("all");
+
+  // Duplicate warning during live entry
+  const [dupWarning, setDupWarning] = useState(null);
 
   /* ── Load sessions ── */
   const loadSessions = useCallback(async () => {
@@ -941,6 +1059,54 @@ export default function App() {
       .slice(0, n);
   }
 
+  /* ── Fuzzy duplicate detection ── */
+  function normalize(s) {
+    return (s || "").toLowerCase()
+      .normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9 ]/g, "").trim();
+  }
+  function similarity(a, b) {
+    const na = normalize(a), nb = normalize(b);
+    if (!na || !nb) return 0;
+    if (na === nb) return 1;
+    if (na.includes(nb) || nb.includes(na)) return 0.9;
+    const wa = new Set(na.split(" ")), wb = nb.split(" ");
+    const common = wb.filter(w => w.length > 2 && wa.has(w)).length;
+    return common / Math.max(wa.size, wb.length);
+  }
+  function findDuplicates(artist, title) {
+    if (!artist || !title) return [];
+    const results = [];
+    sessions.forEach(s => s.sets.forEach(st => st.songs.forEach(sg => {
+      if (!sg.title) return;
+      const artistSim = similarity(artist, sg.artist);
+      const titleSim = similarity(title, sg.title);
+      if (titleSim > 0.75 && artistSim > 0.5) {
+        results.push({ ...sg, sessionNum: s.session_num, sessionDate: s.date, setLabel: st.label });
+      }
+    })));
+    return results;
+  }
+
+  /* ── Search across all sessions ── */
+  function searchSongs(q, season, person) {
+    let songs = sessions.flatMap(s => s.sets.flatMap(st => st.songs.map(sg => ({
+      ...sg, sessionNum: s.session_num, sessionDate: s.date,
+      setLabel: st.label, sessionHost: s.host,
+      sessionId: s.id
+    }))));
+    if (season !== "all") songs = songs.filter(sg => String(sg.sessionNum) === season);
+    if (person !== "all") songs = songs.filter(sg => sg.votes && sg.votes[person] !== undefined);
+    if (q.trim()) {
+      const nq = normalize(q);
+      songs = songs.filter(sg =>
+        normalize(sg.title).includes(nq) ||
+        normalize(sg.artist).includes(nq)
+      );
+    }
+    return songs.filter(sg => sg.title).sort((a, b) => (songAvg(b) || 0) - (songAvg(a) || 0));
+  }
+
   /* ─────────────────────────────────────────────────────────
      RENDER
   ───────────────────────────────────────────────────────── */
@@ -969,7 +1135,8 @@ export default function App() {
         <nav className="nav">
           <button className={`nb ${tab === "live" ? "on" : ""}`} onClick={() => setTab("live")}>▶ PLAY</button>
           <button className={`nb ${tab === "history" ? "on" : ""}`} onClick={() => setTab("history")}>◉ SCORES</button>
-          <button className={`nb ${tab === "stats" ? "on" : ""}`} onClick={() => setTab("stats")}>▲ HALL OF FAME</button>
+          <button className={`nb ${tab === "search" ? "on" : ""}`} onClick={() => setTab("search")}>⊕ BUSCAR</button>
+          <button className={`nb ${tab === "stats" ? "on" : ""}`} onClick={() => setTab("stats")}>▲ HALL</button>
         </nav>
 
         {/* ══ TAB: LIVE ══════════════════════════════════════════ */}
@@ -1082,13 +1249,31 @@ export default function App() {
                 <div className="ct yel">◈ {liveSets[curSet]?.label} · TRACK {curSong + 1}</div>
                 <div className="field"><label>Artista / Banda</label>
                   <input placeholder="Ej: Depeche Mode" value={curLiveSong.artist || ""}
-                    onChange={e => saveSongMeta(curSet, curSong, "artist", e.target.value)} autoFocus />
+                    onChange={e => { saveSongMeta(curSet, curSong, "artist", e.target.value); setDupWarning(null); }}
+                    autoFocus />
                 </div>
                 <div className="field"><label>Canción</label>
                   <input placeholder="Ej: Personal Jesus" value={curLiveSong.title || ""}
-                    onChange={e => saveSongMeta(curSet, curSong, "title", e.target.value)}
+                    onChange={e => { saveSongMeta(curSet, curSong, "title", e.target.value); setDupWarning(null); }}
+                    onBlur={() => {
+                      const dups = findDuplicates(curLiveSong.artist, curLiveSong.title);
+                      setDupWarning(dups.length > 0 ? dups : null);
+                    }}
                     onKeyDown={e => e.key === "Enter" && openVoting()} />
                 </div>
+                {dupWarning && (
+                  <div className="dup-warning">
+                    <div style={{ color: "var(--yellow)", fontFamily: "'Press Start 2P', monospace", fontSize: 7, marginBottom: 6 }}>
+                      ⚠ YA FUE TOCADA ANTES
+                    </div>
+                    {dupWarning.map((d, i) => (
+                      <div key={i} className="dup-item">
+                        {d.artist} — {d.title}<br/>
+                        <span style={{ opacity: .7, fontSize: 10 }}>T{d.sessionNum} · {d.setLabel} · {new Date(d.sessionDate).toLocaleDateString("es-PE")} · avg {songAvg(d)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <button className="btn bp bfw mt12" onClick={openVoting} disabled={!curLiveSong.artist || !curLiveSong.title}>
                   ► ABRIR VOTACIÓN
                 </button>
@@ -1367,12 +1552,13 @@ export default function App() {
             {statsView === "songs" && (
               <div className="card">
                 <div className="ct">◉ TOP 20 — ALL TIME HIGH SCORES</div>
+                <p className="muted" style={{ marginBottom: 10 }}>Toca cualquier canción para ver el detalle</p>
                 {topSongs(20).map((song, i) => (
-                  <div key={i} className="lb">
+                  <div key={i} className="lb" style={{ cursor: "pointer" }} onClick={() => setModalSong(song)}>
                     <span className="lbr">{rankEmoji(i)}</span>
                     <div className="lbi">
                       <div className="lbsong">{song.title}</div>
-                      <div className="lbartist">{song.artist} · T{song.sessionNum} · {new Date(song.sessionDate).toLocaleDateString("es-PE")}</div>
+                      <div className="lbartist">{song.artist} · T{song.sessionNum} · {song.setLabel} · {new Date(song.sessionDate).toLocaleDateString("es-PE")}</div>
                     </div>
                     <span className="lbsc" style={{ color: scoreColor(songAvg(song)) }}>{songAvg(song)}</span>
                   </div>
@@ -1433,9 +1619,140 @@ export default function App() {
               </div>
             )}
           </>}
+
+        {/* ── TAB: BUSCAR ── */}
+        {tab === "search" && <>
+          <div className="card">
+            <div className="ct">⊕ BUSCADOR DE CANCIONES</div>
+            <div className="search-bar">
+              <input
+                className="search-input"
+                placeholder="Buscar artista o canción..."
+                value={searchQ}
+                onChange={e => setSearchQ(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="filters" style={{ marginBottom: 10 }}>
+              <select className="filter-select" value={searchSeason} onChange={e => setSearchSeason(e.target.value)}>
+                <option value="all">Todas las temporadas</option>
+                {[...new Set(sessions.map(s => s.session_num))].sort((a,b)=>a-b).map(n => (
+                  <option key={n} value={String(n)}>Temporada {n}</option>
+                ))}
+              </select>
+              <select className="filter-select" value={searchPerson} onChange={e => setSearchPerson(e.target.value)}>
+                <option value="all">Todos los votantes</option>
+                {DEFAULT_VOTERS.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            {(searchQ.trim() || searchSeason !== "all" || searchPerson !== "all") ? (() => {
+              const results = searchSongs(searchQ, searchSeason, searchPerson);
+              return results.length === 0
+                ? <div className="empty" style={{ padding: "20px 0" }}><p className="insert-coin">SIN RESULTADOS</p></div>
+                : <>
+                  <p className="muted" style={{ marginBottom: 8 }}>{results.length} resultado{results.length !== 1 ? "s" : ""}</p>
+                  {results.map((song, i) => (
+                    <div key={i} className="sr" onClick={() => setModalSong(song)}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="stitle">{song.title}</div>
+                        <div className="sartist">{song.artist}</div>
+                        <div className="mono" style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>
+                          T{song.sessionNum} · {song.setLabel} · {new Date(song.sessionDate).toLocaleDateString("es-PE")}
+                          {searchPerson !== "all" && song.votes[searchPerson] !== undefined &&
+                            <span style={{ color: scoreColor(song.votes[searchPerson]), marginLeft: 6 }}>
+                              {searchPerson}: {song.votes[searchPerson]}
+                            </span>
+                          }
+                        </div>
+                      </div>
+                      <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 12, color: scoreColor(songAvg(song)), flexShrink: 0 }}>
+                        {songAvg(song) ?? "—"}
+                      </span>
+                    </div>
+                  ))}
+                </>;
+            })()
+            : <div className="empty" style={{ padding: "20px 0" }}>
+                <p className="muted">Escribe para buscar entre {sessions.reduce((a,s)=>a+s.sets.flatMap(st=>st.songs).filter(sg=>sg.title).length,0)} canciones</p>
+              </div>
+            }
+          </div>
+        </>}
+
         </>}
 
       </div>
+
+      {/* ── MODAL: DETALLE DE CANCIÓN ── */}
+      {modalSong && (() => {
+        const s = modalSong;
+        const sc = songAvg(s);
+        const votes = Object.entries(s.votes || {}).sort((a,b) => b[1] - a[1]);
+        const q = encodeURIComponent(`${s.artist} ${s.title}`);
+        return (
+          <div className="modal-overlay" onClick={() => setModalSong(null)}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <div style={{ marginBottom: 14 }}>
+                <div className="ct mag" style={{ marginBottom: 6 }}>◉ DETALLE</div>
+                <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 11, color: "var(--cream)", lineHeight: 1.8, marginBottom: 4 }}>
+                  {s.title}
+                </div>
+                <div className="mono" style={{ fontSize: 12, color: "var(--muted)" }}>{s.artist}</div>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                <div className="sbox" style={{ flex: 1, minWidth: 80 }}>
+                  <div className="sval" style={{ fontSize: 28, color: scoreColor(sc) }}>{sc ?? "—"}</div>
+                  <div className="slbl">Promedio</div>
+                </div>
+                <div className="sbox" style={{ flex: 1, minWidth: 80 }}>
+                  <div className="sval" style={{ fontSize: 18 }}>T{s.sessionNum}</div>
+                  <div className="slbl">Temporada</div>
+                </div>
+                <div className="sbox" style={{ flex: 1, minWidth: 80 }}>
+                  <div className="sval" style={{ fontSize: 14 }}>{new Date(s.sessionDate).toLocaleDateString("es-PE", { day:"2-digit", month:"short", year:"2-digit" })}</div>
+                  <div className="slbl">Fecha</div>
+                </div>
+              </div>
+
+              <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginBottom: 12 }}>
+                {s.setLabel} · {s.sessionHost || ""}
+              </div>
+
+              <hr className="divider" />
+              <div className="ct" style={{ fontSize: 8, marginBottom: 8 }}>VOTOS</div>
+              {votes.length === 0
+                ? <p className="muted">Sin votos registrados</p>
+                : votes.map(([voter, score]) => (
+                  <div key={voter} className="vote-row">
+                    <span className="vote-name">{voter}</span>
+                    <span className="vote-score" style={{ color: scoreColor(score) }}>{score}</span>
+                  </div>
+                ))
+              }
+
+              <hr className="divider" />
+              <div className="ct" style={{ fontSize: 8, marginBottom: 8 }}>ABRIR EN</div>
+              <div className="music-links">
+                <a className="mlink spotify" href={`https://open.spotify.com/search/${q}`} target="_blank" rel="noreferrer">
+                  ♫ Spotify
+                </a>
+                <a className="mlink apple" href={`https://music.apple.com/search?term=${q}`} target="_blank" rel="noreferrer">
+                  ♫ Apple Music
+                </a>
+                <a className="mlink" href={`https://www.youtube.com/results?search_query=${q}`} target="_blank" rel="noreferrer">
+                  ▶ YouTube
+                </a>
+              </div>
+
+              <button className="btn bs bfw mt16" style={{ fontSize: 7 }} onClick={() => setModalSong(null)}>
+                ✕ CERRAR
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
     </>
   );
 }
