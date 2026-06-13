@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
+import * as XLSX from "xlsx";
 
 const SUPA_URL = "https://jmkvphayyhwzootlybde.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impta3ZwaGF5eWh3em9vdGx5YmRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5ODE3ODEsImV4cCI6MjA5MzU1Nzc4MX0.EP2vv5avU1FIXlZn4jFo3QkvqnxOdLOrICqNV8qAZxM";
@@ -1194,6 +1195,7 @@ export default function App() {
           <button className={`nb ${tab === "history" ? "on" : ""}`} onClick={() => setTab("history")}>◉ SCORES</button>
           <button className={`nb ${tab === "search" ? "on" : ""}`} onClick={() => setTab("search")}>⊕ BUSCAR</button>
           <button className={`nb ${tab === "stats" ? "on" : ""}`} onClick={() => setTab("stats")}>▲ HALL</button>
+          <button className={`nb ${tab === "import" ? "on" : ""}`} onClick={() => setTab("import")}>⬆ IMPORT</button>
         </nav>
 
         {/* ══ TAB: LIVE ══════════════════════════════════════════ */}
@@ -1768,6 +1770,8 @@ export default function App() {
 
       </div>
 
+        {tab === "import" && <ImportTab db={db} onDone={() => { loadSessions(); setTab("history"); }} />}
+
       {/* ── MODAL: DETALLE DE CANCIÓN ── */}
       {modalSong && (() => {
         const s = modalSong;
@@ -1844,5 +1848,278 @@ export default function App() {
       })()}
 
     </>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   IMPORT TAB — sube Excel directamente a Supabase
+   Formato esperado: hoja "Compas y Copas Playlist Oficial"
+   Columnas: #, Interprete, Cancion, [voters...], Reunión
+══════════════════════════════════════════════════════════════ */
+
+// Columnas de votantes en el Excel (índices 3..25)
+const XL_VOTERS = ["Jose J","Francisco","Hernan","Mario","Daniel","Jorge A.","Carlos",
+  "Freddy","Giusse","Mauricio O.","Tono","Mauricio R.","Lucho","Gino","Patrick",
+  "Alex","Alex2","Julio","Dante","Kurt","Juan Carlos","Ricardo V.","Claudio"];
+
+function parseExcel(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: "array" });
+        const ws = wb.Sheets["Compas y Copas Playlist Oficial"];
+        if (!ws) return reject("Hoja 'Compas y Copas Playlist Oficial' no encontrada");
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+        // rows[0] = título, rows[1] = headers, rows[2+] = datos
+        const sessions = {};
+        for (let i = 2; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || !row[1] || !row[2]) continue; // skip empty
+          const reunion = String(row[28] || "").trim();
+          if (!reunion) continue;
+          const match = reunion.match(/^(T\d+)\s+(.+)$/i);
+          if (!match) continue;
+          const [, tKey, hostRaw] = match;
+          const tNum = parseInt(tKey.replace(/T/i, ""));
+          const host = hostRaw.trim();
+          const setKey = reunion.toUpperCase();
+
+          if (!sessions[tNum]) sessions[tNum] = { session_num: tNum, sets: {} };
+          if (!sessions[tNum].sets[setKey]) sessions[tNum].sets[setKey] = { label: `Set ${host}`, host, songs: [] };
+
+          const votes = {};
+          XL_VOTERS.forEach((voter, vi) => {
+            const v = row[3 + vi];
+            const n = parseFloat(v);
+            if (!isNaN(n) && n > 0 && n <= 10) votes[voter] = n;
+          });
+
+          sessions[tNum].sets[setKey].songs.push({
+            artist: String(row[1] || "").trim(),
+            title: String(row[2] || "").trim(),
+            votes,
+          });
+        }
+
+        // Convert to array sorted by session_num
+        const result = Object.values(sessions)
+          .sort((a, b) => a.session_num - b.session_num)
+          .map(s => ({ ...s, sets: Object.values(s.sets) }));
+
+        resolve(result);
+      } catch (err) { reject(String(err)); }
+    };
+    reader.onerror = () => reject("Error leyendo archivo");
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function ImportTab({ db, onDone }) {
+  const [step, setStep] = useState("drop"); // drop | preview | uploading | done | error
+  const [parsed, setParsed] = useState(null);
+  const [progress, setProgress] = useState({ cur: 0, total: 0, msg: "" });
+  const [errMsg, setErrMsg] = useState("");
+  const [existingNums, setExistingNums] = useState([]);
+  const [skipExisting, setSkipExisting] = useState(true);
+  const dropRef = useRef();
+
+  useEffect(() => {
+    db.from("cyc_sessions").select("session_num").then(({ data }) => {
+      if (data) setExistingNums(data.map(s => s.session_num));
+    });
+  }, [db]);
+
+  async function handleFile(file) {
+    if (!file || !file.name.match(/\.xlsx?$/i)) {
+      setErrMsg("Solo archivos .xlsx"); setStep("error"); return;
+    }
+    try {
+      const data = await parseExcel(file);
+      setParsed(data);
+      setStep("preview");
+    } catch (e) {
+      setErrMsg(String(e)); setStep("error");
+    }
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  }
+
+  async function upload() {
+    setStep("uploading");
+    const sessions = skipExisting
+      ? parsed.filter(s => !existingNums.includes(s.session_num))
+      : parsed;
+
+    let totalSets = sessions.reduce((a, s) => a + s.sets.length, 0);
+    setProgress({ cur: 0, total: totalSets, msg: "Iniciando..." });
+
+    let done = 0;
+    for (const s of sessions) {
+      setProgress(p => ({ ...p, msg: `Creando sesión T${s.session_num}...` }));
+
+      // Upsert session
+      const { data: sess, error: sErr } = await db.from("cyc_sessions").upsert({
+        session_num: s.session_num,
+        host: s.sets[0]?.host || "",
+        date: new Date().toISOString().split("T")[0],
+        attendees: [...new Set(s.sets.flatMap(st => Object.keys(st.songs.flatMap ? [] : []).concat(
+          st.songs.flatMap(sg => Object.keys(sg.votes))
+        )))],
+        sets_count: s.sets.length,
+        songs_count: Math.max(...s.sets.map(st => st.songs.length)),
+        complete: true, active: false,
+      }, { onConflict: "session_num" }).select().single();
+
+      if (sErr || !sess) { setErrMsg(`Error sesión T${s.session_num}: ${sErr?.message}`); setStep("error"); return; }
+
+      for (let si = 0; si < s.sets.length; si++) {
+        const st = s.sets[si];
+        setProgress({ cur: done, total: totalSets, msg: `T${s.session_num} · ${st.label} (${si+1}/${s.sets.length})` });
+
+        const { data: setRow } = await db.from("cyc_sets").upsert({
+          session_id: sess.id, set_index: si, label: st.label
+        }, { onConflict: "session_id,set_index" }).select().single();
+
+        for (let so = 0; so < st.songs.length; so++) {
+          const sg = st.songs[so];
+          const { data: song } = await db.from("cyc_songs").upsert({
+            set_id: setRow.id, song_index: so, artist: sg.artist, title: sg.title, album: ""
+          }, { onConflict: "set_id,song_index" }).select().single();
+
+          for (const [voter, score] of Object.entries(sg.votes)) {
+            await db.from("cyc_votes").upsert(
+              { song_id: song.id, voter_name: voter, score },
+              { onConflict: "song_id,voter_name" }
+            );
+          }
+        }
+        done++;
+        setProgress({ cur: done, total: totalSets, msg: `T${s.session_num} · ${st.label} ✓` });
+      }
+    }
+    setStep("done");
+  }
+
+  const toUpload = parsed && skipExisting
+    ? parsed.filter(s => !existingNums.includes(s.session_num))
+    : parsed || [];
+
+  return (
+    <div className="card" style={{ minHeight: 300 }}>
+      <div className="ct" style={{ color: "#FFBD00", textShadow: "2px 2px 0 #664d00, 0 0 8px #FFBD00" }}>
+        ⬆ IMPORTAR DESDE EXCEL
+      </div>
+
+      {step === "drop" && (
+        <>
+          <div
+            ref={dropRef}
+            onDrop={onDrop}
+            onDragOver={e => e.preventDefault()}
+            onClick={() => document.getElementById("xl-input").click()}
+            style={{
+              border: "3px dashed #FFBD00", padding: "40px 20px", textAlign: "center",
+              cursor: "pointer", background: "rgba(255,189,0,.04)",
+              transition: "background .1s steps(1)",
+            }}
+            onDragEnter={e => { e.currentTarget.style.background = "rgba(255,189,0,.12)"; }}
+            onDragLeave={e => { e.currentTarget.style.background = "rgba(255,189,0,.04)"; }}
+          >
+            <div style={{ fontSize: 40, marginBottom: 10 }}>📊</div>
+            <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: "#FFBD00", lineHeight: 2 }}>
+              ARRASTRA TU EXCEL AQUÍ
+            </p>
+            <p className="muted" style={{ marginTop: 8 }}>
+              o click para seleccionar · solo .xlsx
+            </p>
+          </div>
+          <input id="xl-input" type="file" accept=".xlsx,.xls" style={{ display: "none" }}
+            onChange={e => e.target.files[0] && handleFile(e.target.files[0])} />
+          <div className="mt12" style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 10, color: "var(--muted)", lineHeight: 1.8 }}>
+            <p>Formato esperado: hoja <strong style={{ color: "var(--cream)" }}>"Compas y Copas Playlist Oficial"</strong></p>
+            <p>Columnas: #, Interprete, Cancion, [votantes...], Reunión (ej: T1 Carlos)</p>
+          </div>
+        </>
+      )}
+
+      {step === "preview" && parsed && (
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <p className="muted" style={{ marginBottom: 8 }}>
+              {parsed.length} sesiones · {parsed.reduce((a,s)=>a+s.sets.length,0)} sets · {parsed.reduce((a,s)=>a+s.sets.reduce((b,st)=>b+st.songs.length,0),0)} canciones
+            </p>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, cursor: "pointer" }}>
+              <input type="checkbox" checked={skipExisting} onChange={e => setSkipExisting(e.target.checked)} />
+              <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 11 }}>
+                Omitir temporadas ya existentes en DB ({existingNums.map(n=>`T${n}`).join(", ")})
+              </span>
+            </label>
+
+            {toUpload.length === 0
+              ? <div style={{ color: "#3CFF7F", fontFamily: "'Press Start 2P', monospace", fontSize: 8, padding: "12px 0" }}>
+                  ✓ TODAS LAS TEMPORADAS YA ESTÁN EN LA DB
+                </div>
+              : <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid var(--border)", padding: 8, background: "#000" }}>
+                {toUpload.map(s => (
+                  <div key={s.session_num} style={{ marginBottom: 6 }}>
+                    <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 7, color: "#FFBD00" }}>T{s.session_num}</span>
+                    <span className="muted" style={{ marginLeft: 8 }}>
+                      {s.sets.length} sets · {s.sets.reduce((a,st)=>a+st.songs.length,0)} canciones
+                    </span>
+                    <span className="muted" style={{ marginLeft: 8, fontSize: 9 }}>
+                      {s.sets.map(st=>st.label).join(", ")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            }
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <button className="btn bp" onClick={() => setStep("drop")}>← VOLVER</button>
+            {toUpload.length > 0 &&
+              <button className="btn bm" onClick={upload}>⬆ SUBIR {toUpload.length} TEMPORADA{toUpload.length !== 1 ? "S" : ""}</button>
+            }
+          </div>
+        </>
+      )}
+
+      {step === "uploading" && (
+        <div style={{ textAlign: "center", padding: "30px 0" }}>
+          <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: "#FFBD00", marginBottom: 16, lineHeight: 2 }}>
+            SUBIENDO...
+          </p>
+          <div className="pbar" style={{ marginBottom: 10 }}>
+            <div className="pbar-f" style={{ width: `${progress.total > 0 ? (progress.cur / progress.total) * 100 : 0}%` }} />
+          </div>
+          <p className="muted">{progress.cur}/{progress.total} sets · {progress.msg}</p>
+        </div>
+      )}
+
+      {step === "done" && (
+        <div style={{ textAlign: "center", padding: "30px 0" }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>✅</div>
+          <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: "#3CFF7F", textShadow: "0 0 8px #3CFF7F", lineHeight: 2 }}>
+            IMPORT COMPLETO
+          </p>
+          <button className="btn bp mt16" onClick={onDone}>VER HISTORIAL →</button>
+        </div>
+      )}
+
+      {step === "error" && (
+        <div style={{ textAlign: "center", padding: "20px 0" }}>
+          <p style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: "#FF4D6D", marginBottom: 12 }}>ERROR</p>
+          <p className="muted" style={{ marginBottom: 12 }}>{errMsg}</p>
+          <button className="btn bs" onClick={() => setStep("drop")}>← REINTENTAR</button>
+        </div>
+      )}
+    </div>
   );
 }
