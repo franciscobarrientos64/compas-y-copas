@@ -17,27 +17,27 @@ const CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Paleta Atari 2600 + arcade cabinet */
-  --bg: #0a0005;
-  --bg2: #130010;
-  --surf: #1a001a;
-  --surf2: #220022;
-  --border: #4a004a;
-  --border2: #600060;
-  
-  /* Colores neon arcade */
-  --magenta: #ff00ff;  /* color icónico Atari */
-  --mag2: rgba(255,0,255,.12);
-  --cyan: #00ffff;
+  /* Paleta cyan/celeste — arcade 80s */
+  --bg: #000d18;
+  --bg2: #001525;
+  --surf: #001e30;
+  --surf2: #00253a;
+  --border: #003a55;
+  --border2: #005577;
+
+  /* Neon cyan dominante */
+  --magenta: #00ccff;   /* cyan eléctrico — dominante */
+  --mag2: rgba(0,204,255,.12);
+  --cyan: #00ffff;      /* cyan puro — acento */
   --cyn2: rgba(0,255,255,.1);
-  --yellow: #ffff00;   /* Pac-Man yellow */
-  --orange: #ff6600;   /* Atari logo orange */
-  --green: #00ff44;    /* Asteroids green */
-  --red: #ff2200;
+  --yellow: #ffff00;    /* amarillo — highlights y scores altos */
+  --orange: #00aaff;    /* azul eléctrico */
+  --green: #00ffcc;     /* verde agua */
+  --red: #ff4466;
   --white: #ffffff;
-  --cream: #ffeecc;    /* texto principal cálido */
-  --muted: #663366;
-  --r: 0px;            /* sin border-radius — pixel art es cuadrado */
+  --cream: #aaeeff;     /* texto principal — celeste suave */
+  --muted: #1a6688;
+  --r: 0px;
 }
 
 body {
@@ -54,8 +54,8 @@ body::after {
   position: fixed;
   inset: 0;
   background-image: 
-    linear-gradient(rgba(255,0,255,.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,0,255,.04) 1px, transparent 1px);
+    linear-gradient(rgba(0,204,255,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,204,255,.04) 1px, transparent 1px);
   background-size: 32px 32px;
   pointer-events: none;
   z-index: 0;
@@ -132,9 +132,9 @@ body::before {
   text-transform: uppercase;
   color: var(--magenta);
   text-shadow: 
-    3px 3px 0 #660066,
-    0 0 20px var(--magenta),
-    0 0 40px rgba(255,0,255,.4);
+    3px 3px 0 #004466,
+    0 0 20px var(--cyan),
+    0 0 40px rgba(0,204,255,.4);
   line-height: 1.4;
   display: block;
 }
@@ -180,7 +180,7 @@ body::before {
   display: flex; gap: 0;
   background: var(--surf);
   border: 2px solid var(--magenta);
-  box-shadow: 0 0 16px rgba(255,0,255,.3), inset 0 0 20px rgba(255,0,255,.05);
+  box-shadow: 0 0 16px rgba(0,204,255,.4), inset 0 0 20px rgba(0,204,255,.05);
   padding: 0;
   margin-bottom: 20px;
   position: sticky; top: 8px; z-index: 50;
@@ -255,7 +255,7 @@ body::before {
   margin-bottom: 14px;
   display: flex; align-items: center; gap: 8px;
 }
-.ct.mag { color: var(--magenta); text-shadow: 1px 1px 0 #660066, 0 0 8px var(--magenta); }
+.ct.mag { color: var(--magenta); text-shadow: 1px 1px 0 #004466, 0 0 8px var(--magenta); }
 .ct.yel { color: var(--yellow); text-shadow: 1px 1px 0 #666600, 0 0 8px var(--yellow); }
 .ct.grn { color: var(--green); text-shadow: 1px 1px 0 #006622, 0 0 8px var(--green); }
 
@@ -320,10 +320,10 @@ label {
   background: var(--magenta);
   border-color: var(--magenta);
   color: #000;
-  box-shadow: 3px 3px 0 #660066;
+  box-shadow: 3px 3px 0 #004466;
 }
 .bm:hover:not(:disabled) { background: #000; color: var(--magenta); box-shadow: 3px 3px 0 var(--magenta); }
-.bm:active:not(:disabled) { transform: translate(2px,2px); box-shadow: 1px 1px 0 #660066; }
+.bm:active:not(:disabled) { transform: translate(2px,2px); box-shadow: 1px 1px 0 #004466; }
 .bs {
   background: transparent;
   border-color: var(--muted);
@@ -380,14 +380,14 @@ label {
 .srow {
   display: flex; align-items: center; gap: 8px;
   padding: 7px 10px;
-  background: rgba(255,0,255,.03);
+  background: rgba(0,204,255,.03);
   margin-bottom: 2px;
   border-left: 3px solid transparent;
   transition: border-color .05s steps(1);
 }
 .srow:hover { 
   border-left-color: var(--magenta); 
-  background: rgba(255,0,255,.08);
+  background: rgba(0,204,255,.08);
 }
 .snum { 
   font-family: 'Press Start 2P', monospace; 
@@ -497,7 +497,7 @@ label {
   border-left: 4px solid var(--muted);
   transition: all .05s steps(1);
 }
-.lb:hover { background: rgba(255,0,255,.06); }
+.lb:hover { background: rgba(0,204,255,.06); }
 .lb:nth-child(1) { border-left-color: var(--yellow); box-shadow: -2px 0 8px rgba(255,255,0,.3); }
 .lb:nth-child(2) { border-left-color: #aaaaaa; }
 .lb:nth-child(3) { border-left-color: var(--orange); }
@@ -553,7 +553,7 @@ label {
   border-color: var(--magenta);
   color: #000;
   background: var(--magenta);
-  box-shadow: 2px 2px 0 #660066;
+  box-shadow: 2px 2px 0 #006677;
 }
 .filter-chip:hover:not(.on) { color: var(--cyan); border-color: var(--cyan); }
 .filter-select {
@@ -606,7 +606,7 @@ label {
   justify-content: space-between; 
   align-items: center; 
   padding: 5px 0; 
-  border-bottom: 1px solid rgba(255,0,255,.1); 
+  border-bottom: 1px solid rgba(0,204,255,.1); 
   font-size: 12px; 
 }
 .summary-s:last-child { border-bottom: none; }
@@ -650,7 +650,7 @@ label {
   0%  { text-shadow: -3px 0 var(--cyan), 3px 0 var(--magenta), 0 3px var(--yellow); color: var(--yellow); }
   33% { text-shadow: 3px 0 var(--magenta), -3px 0 var(--cyan); color: var(--magenta); }
   66% { text-shadow: 0 0 0 transparent; color: var(--orange); }
-  100%{ text-shadow: 3px 3px 0 #660066, 0 0 20px var(--magenta); color: var(--magenta); }
+  100%{ text-shadow: 3px 3px 0 #004466, 0 0 20px var(--cyan); color: var(--magenta); }
 }
 
 /* ── SCROLLBAR pixel style ── */
@@ -703,7 +703,7 @@ function setAvg(set) {
 }
 
 /* ── Pixel EQ Bars component — estilo arcade ── */
-const EQ_COLORS = ["#ff00ff","#ff00ff","#ff6600","#ffff00","#00ff44","#00ffff","#ffff00","#ff6600","#ff00ff","#ff00ff"];
+const EQ_COLORS = ["#00ccff","#00ccff","#ff6600","#ffff00","#00ff44","#00ffff","#ffff00","#ff6600","#00ccff","#00ccff"];
 function PixelEQ({ n = 10 }) {
   const bars = Array.from({length: n}, (_, i) => ({
     d: (Math.random() * 0.4 + 0.3).toFixed(2) + "s",
@@ -978,7 +978,7 @@ export default function App() {
           {!liveSession && !showNew && (
             <div className="empty">
               <div className="ei">🕹️</div>
-              <p className="orb" style={{ fontSize: 10, color: "var(--magenta)", textShadow: "2px 2px 0 #660066, 0 0 10px var(--magenta)", lineHeight: 2 }}>GAME OVER</p>
+              <p className="orb" style={{ fontSize: 10, color: "var(--magenta)", textShadow: "2px 2px 0 #006677, 0 0 10px var(--magenta)", lineHeight: 2 }}>GAME OVER</p>
               <p className="insert-coin" style={{ marginTop: 12 }}>▶ INSERT COIN ◀</p>
               <button className="btn bm mt16" onClick={() => setShowNew(true)}>▶ NUEVA SESIÓN</button>
             </div>
