@@ -5,7 +5,7 @@ const SUPA_URL = "https://jmkvphayyhwzootlybde.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impta3ZwaGF5eWh3em9vdGx5YmRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5ODE3ODEsImV4cCI6MjA5MzU1Nzc4MX0.EP2vv5avU1FIXlZn4jFo3QkvqnxOdLOrICqNV8qAZxM";
 const db = createClient(SUPA_URL, SUPA_KEY);
 
-const DEFAULT_VOTERS = ["Jose J","Francisco","Hernan","Mario","Daniel","Jorge A.","Carlos","Freddy","Giusse","Mauricio O.","Tono","Mauricio R.","Lucho","Gino","Patrick","Alex","Julio","Dante","Kurt","Juan Carlos"];
+const DEFAULT_VOTERS = ["Alex","Alex2","Carlos","Claudio","Daniel","Dante","Francisco","Freddy","Gino","Giusse","Hernan","Jorge A.","Jose J","Juan Carlos","Julio","Kurt","Lucho","Mario","Mauricio O.","Mauricio R.","Patrick","Ricardo V.","Tono"];
 const SCORE_VALS = [1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8,8.5,9,9.5,10];
 
 /* ══════════════════════════════════════════════════════════════
@@ -1012,13 +1012,26 @@ export default function App() {
               <div className="field"><label>Asistentes</label>
                 <div className="row">
                   <div className="field mb0" style={{ flex: 1 }}>
-                    <input placeholder="Nombre..." value={nAttName}
-                      onChange={e => setNAttName(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter" && nAttName.trim()) { setNAttendees([...nAttendees, nAttName.trim()]); setNAttName(""); } }}
-                      list="vlist" />
-                    <datalist id="vlist">{DEFAULT_VOTERS.map(v => <option key={v} value={v} />)}</datalist>
+                    <select value={nAttName} onChange={e => setNAttName(e.target.value)}>
+                      <option value="">— seleccionar —</option>
+                      {DEFAULT_VOTERS.filter(v => !nAttendees.includes(v)).map(v => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                      <option value="__nuevo__">+ Nombre nuevo...</option>
+                    </select>
                   </div>
-                  <button className="btn bs bsm" onClick={() => { if (nAttName.trim()) { setNAttendees([...nAttendees, nAttName.trim()]); setNAttName(""); } }}>+ ADD</button>
+                  <button className="btn bp bsm" onClick={() => {
+                    if (nAttName === "__nuevo__") {
+                      const n = prompt("Nombre del nuevo asistente:");
+                      if (n && n.trim() && !nAttendees.includes(n.trim())) {
+                        setNAttendees([...nAttendees, n.trim()]);
+                        setNAttName("");
+                      }
+                    } else if (nAttName && !nAttendees.includes(nAttName)) {
+                      setNAttendees([...nAttendees, nAttName]);
+                      setNAttName("");
+                    }
+                  }}>+ ADD</button>
                 </div>
                 {nAttendees.length > 0 && (
                   <div className="tags mt8">
