@@ -1215,7 +1215,9 @@ export default function App() {
               <div className="ct mag">◈ NUEVA SESIÓN — PLAYER 1</div>
               <div className="row">
                 <div className="field"><label>Anfitrión</label>
-                  <input placeholder="¿Quién pone la música?" value={nHost} onChange={e => setNHost(e.target.value)} />
+                  <input placeholder="¿Quién pone la música?" value={nHost}
+                    onChange={e => setNHost(e.target.value)}
+                    onFocus={() => { if (!nHost && userProfile) setNHost(userProfile.display_name || userProfile.voter_name); }} />
                 </div>
                 <div className="field"><label>Fecha</label>
                   <input type="date" value={nDate} onChange={e => setNDate(e.target.value)} />
@@ -2120,6 +2122,184 @@ function ImportTab({ db, onDone }) {
           <button className="btn bs" onClick={() => setStep("drop")}>← REINTENTAR</button>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LOGIN SCREEN
+══════════════════════════════════════════════════════════════ */
+function LoginScreen({ db }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    setLoading(true); setError("");
+    const { error: err } = await db.auth.signInWithPassword({ email, password });
+    if (err) { setError(err.message); setLoading(false); }
+    // on success, App's onAuthStateChange fires and currentUser updates
+  }
+
+  async function handleForgot() {
+    if (!email) { setError("Ingresa tu email primero"); return; }
+    await db.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    setForgotSent(true);
+  }
+
+  // Derive name hint from email
+  const nameHint = email.split("@")[0];
+
+  return (
+    <div style={{
+      minHeight: "100vh", display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center", padding: 24,
+      background: "var(--bg)", position: "relative", zIndex: 1,
+    }}>
+      <style>{CSS}</style>
+
+      {/* EQ bars */}
+      <div style={{ display:"flex", gap:3, marginBottom:18 }}>
+        {["#FF4D6D","#FFBD00","#3CFF7F","#33B6FF","#FF4D6D","#FFBD00","#3CFF7F","#33B6FF"].map((c,i) => (
+          <div key={i} style={{
+            width:5, background:c, boxShadow:`0 0 6px ${c}`,
+            animation:`eq-anim ${(0.3+i*0.07).toFixed(2)}s steps(5) infinite alternate`,
+            animationDelay:`${i*0.06}s`,
+            height: 24,
+          }} />
+        ))}
+      </div>
+
+      {/* Title */}
+      <div style={{ textAlign:"center", marginBottom:32 }}>
+        <div style={{
+          fontFamily:"'Press Start 2P',monospace",
+          fontSize: "clamp(12px,4vw,22px)",
+          color:"#FF4D6D",
+          textShadow:"3px 3px 0 #881122, 0 0 20px #FF4D6D",
+          letterSpacing:2, lineHeight:1.6,
+        }}>
+          COMPÁS <span style={{ color:"#33B6FF", textShadow:"3px 3px 0 #005588, 0 0 20px #33B6FF" }}>&amp;</span> COPAS
+        </div>
+        <div style={{
+          fontFamily:"'Share Tech Mono',monospace", fontSize:9,
+          color:"var(--muted)", letterSpacing:".2em", marginTop:10,
+          textTransform:"uppercase",
+        }}>
+          ACCESO MIEMBROS
+        </div>
+      </div>
+
+      {/* Login card */}
+      <div style={{
+        width:"100%", maxWidth:360,
+        background:"var(--surf)", border:"2px solid #FF4D6D",
+        boxShadow:"0 0 30px rgba(255,77,109,.25)",
+        padding:24, position:"relative",
+      }}>
+        {/* pixel corners */}
+        <div style={{ position:"absolute", top:-1, left:-1, width:10, height:10, borderTop:"2px solid #33B6FF", borderLeft:"2px solid #33B6FF" }} />
+        <div style={{ position:"absolute", bottom:-1, right:-1, width:10, height:10, borderBottom:"2px solid #33B6FF", borderRight:"2px solid #33B6FF" }} />
+
+        <div style={{ fontFamily:"'Press Start 2P',monospace", fontSize:7, color:"#FFBD00",
+          textShadow:"1px 1px 0 #664d00", marginBottom:20, letterSpacing:".1em" }}>
+          ▶ IDENTIFICATE
+        </div>
+
+        <form onSubmit={handleLogin}>
+          <div className="field">
+            <label>Email</label>
+            <input
+              type="email"
+              placeholder="tu@compascopas.app"
+              value={email}
+              onChange={e => { setEmail(e.target.value); setError(""); }}
+              autoComplete="email"
+              autoFocus
+              style={{ color:"#3CFF7F" }}
+            />
+          </div>
+
+          <div className="field" style={{ position:"relative" }}>
+            <label>Contraseña</label>
+            <input
+              type={showPw ? "text" : "password"}
+              placeholder="••••••••"
+              value={password}
+              onChange={e => { setPassword(e.target.value); setError(""); }}
+              autoComplete="current-password"
+              style={{ color:"#3CFF7F", paddingRight:44 }}
+            />
+            <button type="button" onClick={() => setShowPw(!showPw)} style={{
+              position:"absolute", right:10, top:28,
+              background:"none", border:"none", cursor:"pointer",
+              color:"var(--muted)", fontSize:14,
+            }}>
+              {showPw ? "🙈" : "👁"}
+            </button>
+          </div>
+
+          {error && (
+            <div style={{
+              background:"rgba(255,77,109,.1)", border:"1px solid #FF4D6D",
+              padding:"8px 10px", marginBottom:12,
+              fontFamily:"'Share Tech Mono',monospace", fontSize:11, color:"#FF4D6D",
+            }}>
+              ⚠ {error === "Invalid login credentials" ? "Email o contraseña incorrectos" : error}
+            </div>
+          )}
+
+          {forgotSent && (
+            <div style={{
+              background:"rgba(60,255,127,.08)", border:"1px solid #3CFF7F",
+              padding:"8px 10px", marginBottom:12,
+              fontFamily:"'Share Tech Mono',monospace", fontSize:11, color:"#3CFF7F",
+            }}>
+              ✓ Email de recuperación enviado
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || !email || !password}
+            className="btn bfw"
+            style={{
+              background: loading ? "var(--muted)" : "#FF4D6D",
+              borderColor: "#FF4D6D", color:"#fff",
+              boxShadow: loading ? "none" : "3px 3px 0 #881122",
+              marginBottom:12,
+            }}
+          >
+            {loading ? "..." : "▶ ENTRAR"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleForgot}
+            style={{
+              background:"none", border:"none", cursor:"pointer",
+              color:"var(--muted)", fontFamily:"'Share Tech Mono',monospace",
+              fontSize:10, textDecoration:"underline", display:"block", margin:"0 auto",
+            }}
+          >
+            Olvidé mi contraseña
+          </button>
+        </form>
+      </div>
+
+      <div style={{
+        marginTop:24, fontFamily:"'Share Tech Mono',monospace", fontSize:9,
+        color:"var(--muted)", textAlign:"center", lineHeight:1.8,
+      }}>
+        Tu email: <span style={{ color:"#33B6FF" }}>{nameHint || "nombre"}@compascopas.app</span><br/>
+        Contraseña inicial: <span style={{ color:"#FFBD00" }}>CyC2024!</span>
+      </div>
     </div>
   );
 }
