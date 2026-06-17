@@ -183,7 +183,7 @@ body::before {
 
 /* ── NAV ── */
 .nav {
-  display: flex; gap: 0;
+  display: flex; gap: 0; flex-wrap: wrap;
   background: var(--surf);
   border: 2px solid var(--magenta);
   box-shadow: 0 0 16px rgba(0,204,255,.4), inset 0 0 20px rgba(0,204,255,.05);
@@ -192,15 +192,16 @@ body::before {
   position: sticky; top: 8px; z-index: 50;
 }
 .nb {
-  flex: 1; padding: 12px 6px;
+  flex: 1 1 auto; min-width: 33%; padding: 11px 4px;
   border: none;
   border-right: 2px solid var(--border);
+  border-bottom: 2px solid var(--border);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
   font-family: 'Press Start 2P', monospace;
   font-size: 7px;
-  letter-spacing: .05em;
+  letter-spacing: .02em;
   text-transform: uppercase;
   transition: all .1s steps(1);
 }
@@ -815,6 +816,92 @@ function setAvg(set) {
   return avg(avgs);
 }
 
+/* ════════════════════════════════════════════════════════════
+   ANALYTICS — perfil personal de cada votante
+════════════════════════════════════════════════════════════ */
+function computeProfile(sessions, voterName) {
+  if (!voterName) return null;
+  const allSongs = sessions.flatMap(s =>
+    s.sets.flatMap(st => st.songs.map(sg => ({
+      ...sg, sessionNum: s.session_num, sessionDate: s.date,
+      setLabel: st.label, host: st.host || s.host,
+    })))
+  ).filter(sg => sg.title);
+
+  const myVotes = allSongs
+    .filter(sg => sg.votes && sg.votes[voterName] !== undefined)
+    .map(sg => ({ ...sg, myScore: Number(sg.votes[voterName]), groupAvg: songAvg(sg) }));
+
+  if (myVotes.length === 0) return { empty: true };
+
+  const totalVotes = myVotes.length;
+  const myAvg = avg(myVotes.map(v => v.myScore));
+
+  const voterAvgs = {};
+  DEFAULT_VOTERS.forEach(v => {
+    const scores = allSongs.filter(sg => sg.votes && sg.votes[v] !== undefined).map(sg => Number(sg.votes[v]));
+    if (scores.length >= 10) voterAvgs[v] = avg(scores);
+  });
+  const sortedGen = Object.entries(voterAvgs).sort((a, b) => b[1] - a[1]);
+  const genRank = sortedGen.findIndex(([v]) => v === voterName) + 1;
+  const groupAvg = avg(Object.values(voterAvgs));
+
+  const favorites = [...myVotes].sort((a, b) => b.myScore - a.myScore || (b.groupAvg || 0) - (a.groupAvg || 0)).slice(0, 12);
+  const leastFav = [...myVotes].sort((a, b) => a.myScore - b.myScore || (a.groupAvg || 0) - (b.groupAvg || 0)).slice(0, 8);
+
+  const compat = [];
+  DEFAULT_VOTERS.filter(v => v !== voterName).forEach(other => {
+    const diffs = [];
+    myVotes.forEach(sg => {
+      if (sg.votes[other] !== undefined) diffs.push(Math.abs(sg.myScore - Number(sg.votes[other])));
+    });
+    if (diffs.length >= 8) {
+      const avgDiff = avg(diffs);
+      const score = Math.max(0, Math.min(100, Math.round(100 - avgDiff * 20)));
+      compat.push({ name: other, score, shared: diffs.length });
+    }
+  });
+  compat.sort((a, b) => b.score - a.score);
+  const soulmate = compat[0] || null;
+  const nemesis = compat.length > 1 ? compat[compat.length - 1] : null;
+
+  const controversial = myVotes.map(sg => {
+    const others = Object.entries(sg.votes).filter(([v]) => v !== voterName).map(([, s]) => Number(s));
+    if (others.length < 3) return null;
+    const othersAvg = avg(others);
+    return { ...sg, othersAvg, deviation: sg.myScore - othersAvg };
+  }).filter(Boolean).sort((a, b) => Math.abs(b.deviation) - Math.abs(a.deviation)).slice(0, 6);
+
+  const artistMap = {};
+  myVotes.forEach(sg => {
+    if (!artistMap[sg.artist]) artistMap[sg.artist] = [];
+    artistMap[sg.artist].push(sg.myScore);
+  });
+  const favArtists = Object.entries(artistMap)
+    .filter(([, s]) => s.length >= 2)
+    .map(([artist, s]) => ({ artist, avg: avg(s), count: s.length }))
+    .sort((a, b) => b.avg - a.avg || b.count - a.count).slice(0, 6);
+
+  const firstName = voterName.toLowerCase().split(" ")[0];
+  const hostedSets = [];
+  sessions.forEach(s => s.sets.forEach(st => {
+    if ((st.label || "").toLowerCase().includes(firstName)) {
+      const m = setAvg(st);
+      if (m) hostedSets.push({ sessionNum: s.session_num, label: st.label, avg: m, n: st.songs.filter(x => x.title).length });
+    }
+  }));
+  const hostAvg = hostedSets.length ? avg(hostedSets.map(h => h.avg)) : null;
+
+  const sessionsParticipated = new Set(myVotes.map(v => v.sessionNum)).size;
+  const tens = myVotes.filter(v => v.myScore === 10).length;
+
+  return {
+    totalVotes, myAvg, groupAvg, genRank, genTotal: sortedGen.length,
+    favorites, leastFav, compat, soulmate, nemesis, controversial,
+    favArtists, hostedSets, hostAvg, sessionsParticipated, tens,
+  };
+}
+
 /* ── Pixel EQ Bars component — estilo arcade ── */
 const EQ_COLORS = ["#FF4D6D","#FFBD00","#3CFF7F","#33B6FF","#FF4D6D","#FFBD00","#3CFF7F","#33B6FF","#FF4D6D","#FFBD00"];
 function PixelEQ({ n = 10 }) {
@@ -1193,9 +1280,12 @@ export default function App() {
         <nav className="nav">
           <button className={`nb ${tab === "live" ? "on" : ""}`} onClick={() => setTab("live")}>▶ PLAY</button>
           <button className={`nb ${tab === "history" ? "on" : ""}`} onClick={() => setTab("history")}>◉ SCORES</button>
+          <button className={`nb ${tab === "profile" ? "on" : ""}`} onClick={() => setTab("profile")}>★ PERFIL</button>
           <button className={`nb ${tab === "search" ? "on" : ""}`} onClick={() => setTab("search")}>⊕ BUSCAR</button>
           <button className={`nb ${tab === "stats" ? "on" : ""}`} onClick={() => setTab("stats")}>▲ HALL</button>
-          <button className={`nb ${tab === "import" ? "on" : ""}`} onClick={() => setTab("import")}>⬆ IMPORT</button>
+          {userProfile?.is_admin && (
+            <button className={`nb ${tab === "import" ? "on" : ""}`} onClick={() => setTab("import")}>⬆ IMPORT</button>
+          )}
         </nav>
 
         {/* ══ TAB: LIVE ══════════════════════════════════════════ */}
@@ -1772,7 +1862,16 @@ export default function App() {
 
       </div>
 
-        {tab === "import" && <ImportTab db={db} onDone={() => { loadSessions(); setTab("history"); }} />}
+        {tab === "profile" && (
+          <PersonalProfile
+            sessions={sessions}
+            voterName={userProfile?.voter_name}
+            displayName={userProfile?.display_name}
+            onSongClick={(s) => setModalSong(s)}
+          />
+        )}
+
+        {tab === "import" && userProfile?.is_admin && <ImportTab db={db} onDone={() => { loadSessions(); setTab("history"); }} />}
 
       {/* ── MODAL: DETALLE DE CANCIÓN ── */}
       {modalSong && (() => {
@@ -2301,5 +2400,256 @@ function LoginScreen({ db }) {
         Contraseña inicial: <span style={{ color:"#FFBD00" }}>CyC2024!</span>
       </div>
     </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MI PERFIL — dashboard personal de cada votante
+══════════════════════════════════════════════════════════════ */
+function Initial({ name, size = 56, color = "#FF4D6D" }) {
+  const letter = (name || "?").trim()[0]?.toUpperCase() || "?";
+  return (
+    <div style={{
+      width: size, height: size, flexShrink: 0,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      background: "#000", border: `2px solid ${color}`,
+      boxShadow: `0 0 12px ${color}55, inset 0 0 8px ${color}22`,
+      fontFamily: "'Press Start 2P', monospace",
+      fontSize: size * 0.4, color,
+      textShadow: `0 0 8px ${color}`,
+    }}>{letter}</div>
+  );
+}
+
+function ProfileSong({ song, scoreVal, scoreLabel, onClick }) {
+  return (
+    <div className="srow" style={{ cursor: onClick ? "pointer" : "default" }} onClick={onClick}>
+      <div className="sinfo">
+        <div className="stitle">{song.title}</div>
+        <div className="sartist">{song.artist}{song.album ? ` · 💿 ${song.album}` : ""} · T{song.sessionNum}</div>
+      </div>
+      <div style={{ textAlign: "right", flexShrink: 0 }}>
+        <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 13, color: scoreColor(scoreVal) }}>{scoreVal}</div>
+        {scoreLabel && <div className="mono" style={{ fontSize: 8, color: "var(--muted)" }}>{scoreLabel}</div>}
+      </div>
+    </div>
+  );
+}
+
+function PersonalProfile({ sessions, voterName, displayName, onSongClick }) {
+  const [showAllCompat, setShowAllCompat] = useState(false);
+  const p = computeProfile(sessions, voterName);
+
+  if (!p || p.empty) {
+    return (
+      <div className="card">
+        <div className="ct mag">★ MI PERFIL</div>
+        <div className="empty">
+          <div className="ei">🎧</div>
+          <p className="insert-coin">AÚN NO TIENES VOTOS</p>
+          <p className="muted mt8">Participa en una sesión para construir tu perfil</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Generosidad: texto descriptivo
+  const genPct = Math.round((1 - (p.genRank - 1) / Math.max(1, p.genTotal - 1)) * 100);
+  const genLabel = p.genRank <= p.genTotal * 0.33 ? "GENEROSO" : p.genRank >= p.genTotal * 0.66 ? "EXIGENTE" : "EQUILIBRADO";
+  const genColor = p.genRank <= p.genTotal * 0.33 ? "#3CFF7F" : p.genRank >= p.genTotal * 0.66 ? "#FF4D6D" : "#FFBD00";
+  const diffFromGroup = p.myAvg && p.groupAvg ? (p.myAvg - p.groupAvg).toFixed(2) : "0";
+
+  return (
+    <>
+      {/* HERO */}
+      <div className="card mag" style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <Initial name={displayName || voterName} size={60} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 12, color: "#FF4D6D", textShadow: "2px 2px 0 #881122, 0 0 10px #FF4D6D", lineHeight: 1.5 }}>
+              {displayName || voterName}
+            </div>
+            <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 6 }}>
+              {p.sessionsParticipated} sesiones · {p.totalVotes} votos emitidos
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* STAT BOXES */}
+      <div className="sgrid" style={{ marginBottom: 12 }}>
+        <div className="sbox">
+          <div className="sval" style={{ fontSize: 22, color: scoreColor(p.myAvg) }}>{p.myAvg}</div>
+          <div className="slbl">Tu promedio</div>
+        </div>
+        <div className="sbox">
+          <div className="sval" style={{ fontSize: 22 }}>{p.tens}</div>
+          <div className="slbl">Dieces dados</div>
+        </div>
+        <div className="sbox">
+          <div className="sval" style={{ fontSize: 22, color: "#3CFF7F" }}>{p.favorites.filter(f => f.myScore >= 9).length}</div>
+          <div className="slbl">Favoritas 9+</div>
+        </div>
+        <div className="sbox">
+          <div className="sval" style={{ fontSize: 22 }}>{p.totalVotes}</div>
+          <div className="slbl">Votos</div>
+        </div>
+      </div>
+
+      {/* GENEROSIDAD */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="ct">⚖ TU GENEROSIDAD</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 14, color: genColor, textShadow: `0 0 8px ${genColor}` }}>{genLabel}</div>
+          <div className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>
+            #{p.genRank} de {p.genTotal} votantes
+          </div>
+        </div>
+        <div className="chart-track" style={{ height: 14 }}>
+          <div className="chart-fill" style={{ width: `${genPct}%`, background: `repeating-linear-gradient(90deg, ${genColor} 0px, ${genColor} 6px, transparent 6px, transparent 8px)` }} />
+        </div>
+        <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 8 }}>
+          Tu promedio ({p.myAvg}) está {Number(diffFromGroup) >= 0 ? "+" : ""}{diffFromGroup} respecto al promedio del grupo ({p.groupAvg})
+        </div>
+      </div>
+
+      {/* ALMA GEMELA + NÉMESIS */}
+      {p.soulmate && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+          <div className="card grn" style={{ margin: 0 }}>
+            <div className="mono" style={{ fontSize: 9, color: "#3CFF7F", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 }}>♥ Alma gemela</div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+              <Initial name={p.soulmate.name} size={44} color="#3CFF7F" />
+              <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 13, color: "var(--cream)", textAlign: "center" }}>{p.soulmate.name}</div>
+              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 16, color: "#3CFF7F", textShadow: "0 0 8px #3CFF7F" }}>{p.soulmate.score}%</div>
+              <div className="mono" style={{ fontSize: 8, color: "var(--muted)" }}>{p.soulmate.shared} en común</div>
+            </div>
+          </div>
+          {p.nemesis && (
+            <div className="card" style={{ margin: 0, borderColor: "#FF4D6D" }}>
+              <div className="mono" style={{ fontSize: 9, color: "#FF4D6D", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 }}>⚔ Tu némesis</div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                <Initial name={p.nemesis.name} size={44} color="#FF4D6D" />
+                <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 13, color: "var(--cream)", textAlign: "center" }}>{p.nemesis.name}</div>
+                <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 16, color: "#FF4D6D", textShadow: "0 0 8px #FF4D6D" }}>{p.nemesis.score}%</div>
+                <div className="mono" style={{ fontSize: 8, color: "var(--muted)" }}>{p.nemesis.shared} en común</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* COMPATIBILIDAD COMPLETA */}
+      {p.compat.length > 0 && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="ct">🧬 COMPATIBILIDAD CON EL GRUPO</div>
+          {(showAllCompat ? p.compat : p.compat.slice(0, 5)).map(c => (
+            <div key={c.name} className="chart-bar-row">
+              <div className="chart-label">
+                <span style={{ color: "var(--cream)" }}>{c.name}</span>
+                <span style={{ color: c.score >= 70 ? "#3CFF7F" : c.score >= 50 ? "#FFBD00" : "#FF4D6D" }}>{c.score}%</span>
+              </div>
+              <div className="chart-track">
+                <div className="chart-fill" style={{
+                  width: `${c.score}%`,
+                  background: `repeating-linear-gradient(90deg, ${c.score >= 70 ? "#3CFF7F" : c.score >= 50 ? "#FFBD00" : "#FF4D6D"} 0px, ${c.score >= 70 ? "#3CFF7F" : c.score >= 50 ? "#FFBD00" : "#FF4D6D"} 6px, transparent 6px, transparent 8px)`,
+                }} />
+              </div>
+            </div>
+          ))}
+          {p.compat.length > 5 && (
+            <button className="btn bs bsm bfw mt8" onClick={() => setShowAllCompat(!showAllCompat)}>
+              {showAllCompat ? "▲ VER MENOS" : `▼ VER LOS ${p.compat.length}`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* TUS FAVORITAS */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="ct grn">★ TUS FAVORITAS</div>
+        {p.favorites.slice(0, 8).map((s, i) => (
+          <ProfileSong key={i} song={s} scoreVal={s.myScore}
+            scoreLabel={`grupo ${s.groupAvg}`}
+            onClick={() => onSongClick && onSongClick(s)} />
+        ))}
+      </div>
+
+      {/* PICKS POLÉMICOS */}
+      {p.controversial.length > 0 && (
+        <div className="card yel" style={{ marginBottom: 12 }}>
+          <div className="ct yel">⚡ TUS PICKS POLÉMICOS</div>
+          <p className="muted" style={{ marginBottom: 10, fontSize: 10 }}>Donde más te alejaste del resto del grupo</p>
+          {p.controversial.map((s, i) => (
+            <div key={i} className="srow" style={{ cursor: "pointer" }} onClick={() => onSongClick && onSongClick(s)}>
+              <div className="sinfo">
+                <div className="stitle">{s.title}</div>
+                <div className="sartist">{s.artist} · T{s.sessionNum}</div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 11, color: scoreColor(s.myScore) }}>{s.myScore}</div>
+                  <div className="mono" style={{ fontSize: 7, color: "var(--muted)" }}>tú</div>
+                </div>
+                <div style={{ color: s.deviation > 0 ? "#3CFF7F" : "#FF4D6D", fontFamily: "'Press Start 2P', monospace", fontSize: 9 }}>
+                  {s.deviation > 0 ? "▲" : "▼"}{Math.abs(s.deviation).toFixed(1)}
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 11, color: "var(--muted)" }}>{s.othersAvg}</div>
+                  <div className="mono" style={{ fontSize: 7, color: "var(--muted)" }}>resto</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ARTISTAS FAVORITOS */}
+      {p.favArtists.length > 0 && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="ct">🎤 TUS ARTISTAS FAVORITOS</div>
+          {p.favArtists.map((a, i) => (
+            <div key={i} className="lb">
+              <span className="lbr">{rankEmoji(i)}</span>
+              <div className="lbi">
+                <div className="lbsong">{a.artist}</div>
+                <div className="lbartist">{a.count} canciones votadas</div>
+              </div>
+              <span className="lbsc" style={{ color: scoreColor(a.avg) }}>{a.avg}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* MENOS FAVORITAS */}
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="ct" style={{ color: "#FF4D6D", textShadow: "1px 1px 0 #881122, 0 0 8px #FF4D6D" }}>💔 LAS QUE MENOS TE GUSTARON</div>
+        {p.leastFav.slice(0, 6).map((s, i) => (
+          <ProfileSong key={i} song={s} scoreVal={s.myScore}
+            scoreLabel={`grupo ${s.groupAvg}`}
+            onClick={() => onSongClick && onSongClick(s)} />
+        ))}
+      </div>
+
+      {/* COMO ANFITRIÓN */}
+      {p.hostedSets.length > 0 && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="ct">🎚 TUS SETS COMO ANFITRIÓN</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <span className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>Promedio de tus sets</span>
+            <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 18, color: scoreColor(p.hostAvg), textShadow: `0 0 8px ${scoreColor(p.hostAvg)}` }}>{p.hostAvg}</span>
+          </div>
+          {p.hostedSets.sort((a, b) => b.avg - a.avg).map((h, i) => (
+            <div key={i} className="lb">
+              <div className="lbi">
+                <div className="lbsong">{h.label}</div>
+                <div className="lbartist">T{h.sessionNum} · {h.n} canciones</div>
+              </div>
+              <span className="lbsc" style={{ color: scoreColor(h.avg) }}>{h.avg}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
