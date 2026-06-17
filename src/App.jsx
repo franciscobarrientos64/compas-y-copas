@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import html2canvas from "html2canvas";
 
 const SUPA_URL = "https://jmkvphayyhwzootlybde.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impta3ZwaGF5eWh3em9vdGx5YmRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5ODE3ODEsImV4cCI6MjA5MzU1Nzc4MX0.EP2vv5avU1FIXlZn4jFo3QkvqnxOdLOrICqNV8qAZxM";
@@ -2441,6 +2442,7 @@ function ProfileSong({ song, scoreVal, scoreLabel, onClick }) {
 
 function PersonalProfile({ sessions, voterName, displayName, onSongClick }) {
   const [showAllCompat, setShowAllCompat] = useState(false);
+  const [showCard, setShowCard] = useState(false);
   const p = computeProfile(sessions, voterName);
 
   if (!p || p.empty) {
@@ -2478,6 +2480,22 @@ function PersonalProfile({ sessions, voterName, displayName, onSongClick }) {
           </div>
         </div>
       </div>
+
+      {/* SHARE BUTTON */}
+      <button className="btn bm bfw" style={{ marginBottom: 12 }}
+        onClick={() => setShowCard(true)}>
+        📤 COMPARTIR MI PERFIL
+      </button>
+
+      {/* Shareable Card Modal */}
+      {showCard && (
+        <ShareableCard
+          profile={p}
+          voterName={voterName}
+          displayName={displayName}
+          onClose={() => setShowCard(false)}
+        />
+      )}
 
       {/* STAT BOXES */}
       <div className="sgrid" style={{ marginBottom: 12 }}>
@@ -2654,5 +2672,282 @@ function PersonalProfile({ sessions, voterName, displayName, onSongClick }) {
         </div>
       )}
     </>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TARJETA COMPARTIBLE — estilo Spotify Wrapped
+   Exporta PNG para WhatsApp / Instagram Stories
+══════════════════════════════════════════════════════════════ */
+function ShareableCard({ profile, voterName, displayName, onClose }) {
+  const cardRef = useRef(null);
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState(false);
+  const p = profile;
+  if (!p || p.empty) return null;
+
+  const genLabel = p.genRank <= p.genTotal * 0.33 ? "GENEROSO" : p.genRank >= p.genTotal * 0.66 ? "EXIGENTE" : "EQUILIBRADO";
+  const genColor = p.genRank <= p.genTotal * 0.33 ? "#3CFF7F" : p.genRank >= p.genTotal * 0.66 ? "#FF4D6D" : "#FFBD00";
+  const initial = (displayName || voterName || "?")[0].toUpperCase();
+
+  async function exportCard() {
+    if (!cardRef.current) return;
+    setExporting(true);
+    try {
+      const canvas = await html2canvas(cardRef.current, {
+        backgroundColor: null,
+        scale: 3,
+        useCORS: true,
+        logging: false,
+      });
+      const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+      const file = new File([blob], `compas-copas-${voterName.replace(/\s/g, "-")}.png`, { type: "image/png" });
+
+      // Try Web Share API (mobile)
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: `Mi perfil en Compás & Copas`,
+          text: `🎵 Mi perfil musical · compasycopas.com`,
+          files: [file],
+        });
+      } else {
+        // Fallback: download
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = file.name;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+      setExported(true);
+      setTimeout(() => setExported(false), 3000);
+    } catch (e) {
+      console.error(e);
+      // If share was cancelled, that's fine
+    }
+    setExporting(false);
+  }
+
+  const top3 = p.favorites.slice(0, 3);
+  const topArtist = p.favArtists[0];
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:16, maxHeight:"95vh", overflowY:"auto", padding:"12px 0" }} onClick={e => e.stopPropagation()}>
+
+        {/* ── THE CARD ── */}
+        <div ref={cardRef} style={{
+          width: 380, minHeight: 620,
+          background: "linear-gradient(170deg, #0a0a1a 0%, #111133 30%, #1a0a2e 60%, #0a0a1a 100%)",
+          padding: "28px 24px 24px",
+          position: "relative",
+          overflow: "hidden",
+          fontFamily: "'Share Tech Mono', 'Courier New', monospace",
+        }}>
+          {/* Background grid */}
+          <div style={{
+            position:"absolute", inset:0, opacity:0.06,
+            backgroundImage: "linear-gradient(rgba(255,77,109,.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,77,109,.5) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+            pointerEvents: "none",
+          }} />
+
+          {/* Scanlines */}
+          <div style={{
+            position:"absolute", inset:0,
+            background: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.12) 2px, rgba(0,0,0,.12) 3px)",
+            pointerEvents: "none",
+          }} />
+
+          {/* Content */}
+          <div style={{ position:"relative", zIndex:1 }}>
+
+            {/* Header */}
+            <div style={{ textAlign:"center", marginBottom:20 }}>
+              <div style={{ fontFamily:"'Press Start 2P', monospace", fontSize:8, color:"#FF4D6D", letterSpacing:".15em", marginBottom:4, opacity:.7 }}>
+                COMPÁS & COPAS
+              </div>
+              <div style={{ fontFamily:"'Press Start 2P', monospace", fontSize:7, color:"#666", letterSpacing:".3em" }}>
+                MI PERFIL MUSICAL
+              </div>
+            </div>
+
+            {/* Avatar + Name */}
+            <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:24 }}>
+              <div style={{
+                width:64, height:64, display:"flex", alignItems:"center", justifyContent:"center",
+                background:"#000", border:"3px solid #FF4D6D",
+                boxShadow:"0 0 20px rgba(255,77,109,.4), inset 0 0 12px rgba(255,77,109,.1)",
+                fontFamily:"'Press Start 2P', monospace", fontSize:28, color:"#FF4D6D",
+                textShadow:"0 0 12px #FF4D6D",
+              }}>{initial}</div>
+              <div>
+                <div style={{
+                  fontFamily:"'Press Start 2P', monospace", fontSize:14, color:"#fff",
+                  textShadow:"0 0 10px rgba(255,255,255,.3)",
+                  lineHeight:1.4,
+                }}>{displayName || voterName}</div>
+                <div style={{ fontSize:10, color:"#666", marginTop:6 }}>
+                  {p.sessionsParticipated} sesiones · {p.totalVotes} votos
+                </div>
+              </div>
+            </div>
+
+            {/* Big Stats Row */}
+            <div style={{ display:"flex", gap:8, marginBottom:20 }}>
+              {[
+                { val: p.myAvg, label: "PROMEDIO", color: scoreColor(p.myAvg) },
+                { val: p.tens, label: "DIECES", color: "#FFBD00" },
+                { val: genLabel, label: "ESTILO", color: genColor, small: true },
+              ].map((s, i) => (
+                <div key={i} style={{
+                  flex:1, background:"rgba(0,0,0,.5)", border:"1px solid #333",
+                  padding:"12px 6px", textAlign:"center",
+                }}>
+                  <div style={{
+                    fontFamily:"'Press Start 2P', monospace",
+                    fontSize: s.small ? 8 : 18, color: s.color,
+                    textShadow: `0 0 8px ${s.color}55`,
+                    lineHeight:1.3,
+                  }}>{s.val}</div>
+                  <div style={{ fontSize:7, color:"#555", marginTop:4, letterSpacing:".1em" }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Soulmate */}
+            {p.soulmate && (
+              <div style={{
+                background:"rgba(60,255,127,.04)", border:"1px solid rgba(60,255,127,.3)",
+                padding:"12px", marginBottom:16, display:"flex", alignItems:"center", gap:12,
+              }}>
+                <div style={{
+                  width:36, height:36, display:"flex", alignItems:"center", justifyContent:"center",
+                  border:"2px solid #3CFF7F", fontFamily:"'Press Start 2P', monospace",
+                  fontSize:16, color:"#3CFF7F", flexShrink:0,
+                }}>{(p.soulmate.name || "?")[0]}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:8, color:"#3CFF7F", letterSpacing:".1em", marginBottom:3 }}>♥ ALMA GEMELA MUSICAL</div>
+                  <div style={{ fontSize:13, color:"#fff" }}>{p.soulmate.name}</div>
+                </div>
+                <div style={{
+                  fontFamily:"'Press Start 2P', monospace", fontSize:16,
+                  color:"#3CFF7F", textShadow:"0 0 8px #3CFF7F",
+                }}>{p.soulmate.score}%</div>
+              </div>
+            )}
+
+            {/* Top 3 */}
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontFamily:"'Press Start 2P', monospace", fontSize:7, color:"#FFBD00", letterSpacing:".1em", marginBottom:10 }}>
+                ★ TOP 3 FAVORITAS
+              </div>
+              {top3.map((s, i) => (
+                <div key={i} style={{
+                  display:"flex", alignItems:"center", gap:10,
+                  padding:"8px 0", borderBottom: i < 2 ? "1px solid rgba(255,255,255,.06)" : "none",
+                }}>
+                  <span style={{
+                    fontFamily:"'Press Start 2P', monospace", fontSize:14,
+                    color: i === 0 ? "#FFBD00" : i === 1 ? "#aaa" : "#886633",
+                    textShadow: i === 0 ? "0 0 8px #FFBD00" : "none",
+                    width:24, textAlign:"center",
+                  }}>{["🥇","🥈","🥉"][i]}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, color:"#fff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.title}</div>
+                    <div style={{ fontSize:9, color:"#555", marginTop:2 }}>{s.artist}</div>
+                  </div>
+                  <span style={{
+                    fontFamily:"'Press Start 2P', monospace", fontSize:13,
+                    color: scoreColor(s.myScore),
+                  }}>{s.myScore}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Favorite Artist */}
+            {topArtist && (
+              <div style={{
+                background:"rgba(51,182,255,.04)", border:"1px solid rgba(51,182,255,.3)",
+                padding:"10px 12px", marginBottom:16, display:"flex", alignItems:"center", justifyContent:"space-between",
+              }}>
+                <div>
+                  <div style={{ fontSize:8, color:"#33B6FF", letterSpacing:".1em", marginBottom:3 }}>🎤 ARTISTA FAVORITO</div>
+                  <div style={{ fontSize:13, color:"#fff" }}>{topArtist.artist}</div>
+                  <div style={{ fontSize:9, color:"#555", marginTop:2 }}>{topArtist.count} canciones · avg {topArtist.avg}</div>
+                </div>
+                <div style={{
+                  fontFamily:"'Press Start 2P', monospace", fontSize:18,
+                  color:"#33B6FF", textShadow:"0 0 8px #33B6FF",
+                }}>{topArtist.avg}</div>
+              </div>
+            )}
+
+            {/* Most Controversial Pick */}
+            {p.controversial[0] && (() => {
+              const c = p.controversial[0];
+              return (
+                <div style={{
+                  background:"rgba(255,189,0,.04)", border:"1px solid rgba(255,189,0,.25)",
+                  padding:"10px 12px", marginBottom:20,
+                }}>
+                  <div style={{ fontSize:8, color:"#FFBD00", letterSpacing:".1em", marginBottom:4 }}>⚡ PICK MÁS POLÉMICO</div>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:11, color:"#fff" }}>{c.title}</div>
+                      <div style={{ fontSize:9, color:"#555" }}>{c.artist}</div>
+                    </div>
+                    <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                      <div style={{ textAlign:"center" }}>
+                        <div style={{ fontFamily:"'Press Start 2P', monospace", fontSize:12, color:scoreColor(c.myScore) }}>{c.myScore}</div>
+                        <div style={{ fontSize:7, color:"#555" }}>yo</div>
+                      </div>
+                      <div style={{ fontFamily:"'Press Start 2P', monospace", fontSize:9, color: c.deviation > 0 ? "#3CFF7F" : "#FF4D6D" }}>
+                        {c.deviation > 0 ? "▲" : "▼"}{Math.abs(c.deviation).toFixed(1)}
+                      </div>
+                      <div style={{ textAlign:"center" }}>
+                        <div style={{ fontFamily:"'Press Start 2P', monospace", fontSize:12, color:"#555" }}>{c.othersAvg}</div>
+                        <div style={{ fontSize:7, color:"#555" }}>grupo</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Footer */}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div>
+                <div style={{ fontFamily:"'Press Start 2P', monospace", fontSize:6, color:"#FF4D6D", letterSpacing:".1em" }}>COMPÁS & COPAS</div>
+                <div style={{ fontSize:8, color:"#444", marginTop:3 }}>compasycopas.com</div>
+              </div>
+              <div style={{
+                display:"flex", gap:2, alignItems:"flex-end", height:16,
+              }}>
+                {["#FF4D6D","#FFBD00","#3CFF7F","#33B6FF","#FF4D6D","#FFBD00"].map((c, i) => (
+                  <div key={i} style={{
+                    width:4, height: 6 + (i % 3) * 4,
+                    background:c, boxShadow:`0 0 4px ${c}`,
+                  }} />
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* ── ACTIONS ── */}
+        <div style={{ display:"flex", gap:8 }}>
+          <button className="btn bm" onClick={exportCard} disabled={exporting}
+            style={{ fontSize:7 }}>
+            {exporting ? "..." : exported ? "✓ LISTO" : "📤 COMPARTIR / DESCARGAR"}
+          </button>
+          <button className="btn bs" onClick={onClose} style={{ fontSize:7 }}>
+            ✕ CERRAR
+          </button>
+        </div>
+
+      </div>
+    </div>
   );
 }
