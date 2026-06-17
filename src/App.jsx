@@ -862,8 +862,11 @@ function computeProfile(sessions, voterName) {
     }
   });
   compat.sort((a, b) => b.score - a.score);
-  const soulmate = compat[0] || null;
-  const nemesis = compat.length > 1 ? compat[compat.length - 1] : null;
+  // Headline soulmate/nemesis: exigir muestra robusta (>=20 en comun) si es posible
+  const robust = compat.filter(c => c.shared >= 20);
+  const pool = robust.length >= 2 ? robust : compat;
+  const soulmate = pool[0] || null;
+  const nemesis = pool.length > 1 ? pool[pool.length - 1] : null;
 
   const controversial = myVotes.map(sg => {
     const others = Object.entries(sg.votes).filter(([v]) => v !== voterName).map(([, s]) => Number(s));
